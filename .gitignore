@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+logs/
+sessions/
+scratch/
+.cursor/
+config/profiles/resumes/
+config/profiles/*.json

@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Hunt Bot — Control Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0d14;
+      --surface: #111520;
+      --card: #161b2e;
+      --border: #1e2840;
+      --accent: #4f8ef7;
+      --accent2: #7c3aed;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0; width: 240px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      z-index: 100;
+    }
+    .logo {
+      padding: 28px 24px 20px;
+      font-size: 18px; font-weight: 800;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+    .logo span { display: block; font-size: 11px; font-weight: 400; color: var(--muted); -webkit-text-fill-color: var(--muted); margin-top: 2px; }
+    .nav { padding: 8px 12px; flex: 1; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 14px; border-radius: 10px;
+      font-size: 14px; font-weight: 500; cursor: pointer;
+      color: var(--muted); transition: all .2s; margin-bottom: 4px;
+      border: 1px solid transparent;
+    }
+    .nav-item:hover { background: var(--card); color: var(--text); }
+    .nav-item.active { background: rgba(79,142,247,.12); color: var(--accent); border-color: rgba(79,142,247,.2); }
+    .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+    /* ── MAIN CONTENT ── */
+    .main { margin-left: 240px; padding: 32px; min-height: 100vh; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── HEADER ── */
+    .page-header { margin-bottom: 28px; }
+    .page-header h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.5px; }
+    .page-header p { color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+    /* ── STAT CARDS ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 28px; }
+    .stat-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px;
+      position: relative; overflow: hidden;
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .stat-card.blue::before { background: linear-gradient(90deg, var(--accent), #818cf8); }
+    .stat-card.green::before { background: linear-gradient(90deg, var(--green), #34d399); }
+    .stat-card.yellow::before { background: linear-gradient(90deg, var(--yellow), #fbbf24); }
+    .stat-card.red::before { background: linear-gradient(90deg, var(--red), #f87171); }
+    .stat-card.purple::before { background: linear-gradient(90deg, var(--accent2), #a78bfa); }
+    .stat-label { font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .stat-value { font-size: 36px; font-weight: 800; margin-top: 8px; letter-spacing: -1px; }
+    .stat-card.blue .stat-value { color: var(--accent); }
+    .stat-card.green .stat-value { color: var(--green); }
+    .stat-card.yellow .stat-value { color: var(--yellow); }
+    .stat-card.red .stat-value { color: var(--red); }
+    .stat-card.purple .stat-value { color: #a78bfa; }
+
+    /* ── BOT CONTROL ── */
+    .bot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 28px; }
+    .bot-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px;
+      transition: border-color .2s;
+    }
+    .bot-card:hover { border-color: var(--accent); }
+    .bot-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .bot-name { font-size: 17px; font-weight: 700; }
+    .bot-status {
+      font-size: 11px; font-weight: 600; padding: 4px 10px;
+      border-radius: 20px; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .bot-status.idle { background: rgba(100,116,139,.15); color: var(--muted); }
+    .bot-status.running { background: rgba(34,197,94,.15); color: var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.6 } }
+    .bot-desc { font-size: 13px; color: var(--muted); margin-bottom: 18px; line-height: 1.6; }
+    .company-input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 13px;
+      margin-bottom: 12px; outline: none; font-family: inherit;
+      transition: border-color .2s;
+    }
+    .company-input:focus { border-color: var(--accent); }
+    .company-input::placeholder { color: var(--muted); }
+    .btn-row { display: flex; gap: 8px; }
+    .btn {
+      flex: 1; padding: 10px 16px; border-radius: 9px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      border: none; transition: all .2s; font-family: inherit;
+    }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+    .btn-primary:hover { opacity: .85; transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .btn-ghost {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--border); color: var(--text); }
+
+    /* ── LOGS ── */
+    .log-panel {
+      background: #0d1117; border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 16px;
+      height: 240px; overflow-y: auto; font-family: 'Courier New', monospace;
+      font-size: 12px; line-height: 1.7; color: #8b949e;
+    }
+    .log-panel::-webkit-scrollbar { width: 4px; }
+    .log-panel::-webkit-scrollbar-track { background: transparent; }
+    .log-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .log-line { white-space: pre-wrap; word-break: break-all; }
+    .log-line.ok { color: var(--green); }
+    .log-line.fail { color: var(--red); }
+    .log-line.warn { color: var(--yellow); }
+    .log-line.info { color: var(--accent); }
+    .log-empty { color: var(--muted); text-align: center; padding: 40px 0; font-size: 13px; }
+
+    /* ── TABLE ── */
+    .table-wrap {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .table-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .table-head h3 { font-size: 15px; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; padding: 12px 20px; text-align: left; background: rgba(255,255,255,.02); }
+    tbody td { padding: 13px 20px; font-size: 13px; border-top: 1px solid var(--border); }
+    tbody tr:hover td { background: rgba(79,142,247,.04); }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
+    }
+    .badge-applied { background: rgba(34,197,94,.15); color: var(--green); }
+    .badge-skipped { background: rgba(100,116,139,.15); color: var(--muted); }
+    .badge-manual { background: rgba(245,158,11,.15); color: var(--yellow); }
+    .badge-linkedin { background: rgba(10,102,194,.25); color: #60a5fa; }
+    .badge-naukri { background: rgba(124,58,237,.2); color: #a78bfa; }
+
+    .conn-badge {
+      display: inline-block; padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+    }
+    .conn-disconnected { background: rgba(100,116,139,.15); color: var(--muted); }
+    .conn-checking { background: rgba(79,142,247,.15); color: var(--accent); }
+    .conn-connected { background: rgba(34,197,94,.15); color: var(--green); }
+    .conn-failed { background: rgba(239,68,68,.15); color: var(--red); }
+    .conn-challenge { background: rgba(245,158,11,.15); color: var(--yellow); }
+
+    /* ── FORM ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.full { grid-column: 1 / -1; }
+    label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+    input[type=text], input[type=email], input[type=password], input[type=number] {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 9px; padding: 10px 14px; color: var(--text);
+      font-size: 14px; font-family: inherit; outline: none;
+      transition: border-color .2s;
+    }
+    input:focus { border-color: var(--accent); }
+    .tag-input-wrap {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 9px; padding: 8px; display: flex; flex-wrap: wrap;
+      gap: 6px; min-height: 44px; align-items: center;
+      transition: border-color .2s; cursor: text;
+    }
+    .tag-input-wrap:focus-within { border-color: var(--accent); }
+    .tag {
+      background: rgba(79,142,247,.15); color: var(--accent);
+      padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 500;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .tag-remove { cursor: pointer; opacity: .6; font-size: 14px; line-height: 1; }
+    .tag-remove:hover { opacity: 1; }
+    .tag-input {
+      border: none; outline: none; background: transparent;
+      color: var(--text); font-size: 13px; font-family: inherit;
+      flex: 1; min-width: 120px; padding: 2px 4px;
+    }
+    .section-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 24px; margin-bottom: 20px;
+    }
+    .section-title {
+      font-size: 15px; font-weight: 700; margin-bottom: 18px;
+      padding-bottom: 14px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-icon { font-size: 18px; }
+    .save-bar {
+      position: sticky; bottom: 0; background: var(--bg);
+      border-top: 1px solid var(--border); padding: 16px 0;
+      margin-top: 24px; text-align: right;
+    }
+    .toast {
+      position: fixed; bottom: 28px; right: 28px;
+      background: var(--green); color: #000;
+      padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 600;
+      display: none; z-index: 9999; animation: slideIn .3s ease;
+    }
+    .toast.error { background: var(--red); color: #fff; }
+    @keyframes slideIn { from { transform: translateY(20px); opacity:0 } to { transform: translateY(0); opacity:1 } }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 900px) { .bot-grid { grid-template-columns: 1fr 1fr; } .form-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="logo">
+    Job Hunt Bot
+    <span>Pratik Pawar — Senior Data Engineer</span>
+  </div>
+  <nav class="nav">
+    <div class="nav-item active" data-page="dashboard" onclick="nav('dashboard', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item" data-page="bots" onclick="nav('bots', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      Launch Bots
+    </div>
+    <div class="nav-item" data-page="applications" onclick="nav('applications', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Applications
+    </div>
+    <div class="nav-item" data-page="review" onclick="nav('review', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Review Queue
+    </div>
+    <div class="nav-item" data-page="profile" onclick="nav('profile', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      My Profile
+    </div>
+  </nav>
+</div>
+
+<div class="main">
+
+  <!-- ── DASHBOARD ── -->
+  <div id="page-dashboard" class="page active">
+    <div class="page-header">
+      <h1>Dashboard</h1>
+      <p>Your job hunt overview and live stats</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card blue"><div class="stat-label">Total Applications</div><div class="stat-value" id="stat-total">—</div></div>
+      <div class="stat-card green"><div class="stat-label">Applied</div><div class="stat-value" id="stat-applied">—</div></div>
+      <div class="stat-card purple"><div class="stat-label">Today</div><div class="stat-value" id="stat-today">—</div></div>
+      <div class="stat-card yellow"><div class="stat-label">Manual Needed</div><div class="stat-value" id="stat-manual">—</div></div>
+      <div class="stat-card red"><div class="stat-label">Skipped</div><div class="stat-value" id="stat-skipped">—</div></div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-head">
+        <h3>Recent Applications</h3>
+        <button class="btn btn-ghost" onclick="loadApps()" style="padding:7px 14px; font-size:12px;">Refresh</button>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Company</th><th>Role</th><th>Portal</th><th>Status</th><th>Match</th>
+        </tr></thead>
+        <tbody id="apps-table"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── BOTS PAGE ── -->
+  <div id="page-bots" class="page">
+    <div class="page-header">
+      <h1>Launch Bots</h1>
+      <p>Start auto-apply bots for each platform</p>
+    </div>
+
+    <div class="bot-grid">
+      <div class="bot-card" id="bot-card-linkedin">
+        <div class="bot-header">
+          <div class="bot-name">LinkedIn</div>
+          <div class="bot-status idle" id="status-linkedin">Idle</div>
+        </div>
+        <div class="bot-desc">Auto-applies to LinkedIn Easy Apply jobs matching your skills & keywords.</div>
+        <input class="company-input" id="company-linkedin" placeholder="Filter companies (e.g. Google, TCS) — leave blank for all" />
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-linkedin" onclick="startBot('linkedin')">Start LinkedIn Bot</button>
+          <button class="btn btn-ghost" onclick="viewLogs('linkedin')">Logs</button>
+        </div>
+      </div>
+
+      <div class="bot-card" id="bot-card-naukri">
+        <div class="bot-header">
+          <div class="bot-name">Naukri</div>
+          <div class="bot-status idle" id="status-naukri">Idle</div>
+        </div>
+        <div class="bot-desc">Auto-applies to jobs on Naukri.com filtered by your skill profile.</div>
+        <input class="company-input" id="company-naukri" placeholder="Filter companies (e.g. Wipro, Infosys) — leave blank for all" />
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-naukri" onclick="startBot('naukri')">Start Naukri Bot</button>
+          <button class="btn btn-ghost" onclick="viewLogs('naukri')">Logs</button>
+        </div>
+      </div>
+
+      <div class="bot-card" id="bot-card-all">
+        <div class="bot-header">
+          <div class="bot-name">All Platforms</div>
+          <div class="bot-status idle" id="status-all">Idle</div>
+        </div>
+        <div class="bot-desc">Runs LinkedIn + Naukri + Company career pages together in sequence.</div>
+        <input class="company-input" id="company-all" placeholder="Optional: restrict companies" />
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-all" onclick="startBot('all')">Start All Bots</button>
+          <button class="btn btn-ghost" onclick="viewLogs('all')">Logs</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logs Panel -->
+    <div class="section-card">
+      <div class="section-title">
+        <span class="section-icon">&#x1F4BB;</span>
+        Live Bot Logs — <span id="log-title" style="color:var(--muted);font-weight:400;font-size:13px">Select a bot to view logs</span>
+      </div>
+      <div class="log-panel" id="log-panel">
+        <div class="log-empty">No logs yet. Start a bot to see output here.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── APPLICATIONS PAGE ── -->
+  <div id="page-applications" class="page">
+    <div class="page-header">
+      <h1>Applications</h1>
+      <p>All job applications tracked and logged</p>
+    </div>
+    <div class="table-wrap">
+      <div class="table-head">
+        <h3>All Applications</h3>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="filter-input" placeholder="Filter by company or role..." style="padding:7px 12px;font-size:13px;width:230px" oninput="filterApps()" />
+          <button class="btn btn-ghost" onclick="loadApps()" style="padding:7px 14px;font-size:12px;">Refresh</button>
+        </div>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Company</th><th>Role</th><th>Portal</th><th>Status</th><th>Match %</th><th>Follow Up</th>
+        </tr></thead>
+        <tbody id="apps-table-full"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── REVIEW QUEUE PAGE ── -->
+  <div id="page-review" class="page">
+    <div class="page-header">
+      <h1>Review Queue</h1>
+      <p>Decide whether to apply or skip medium-match roles</p>
+    </div>
+    <div class="table-wrap">
+      <div class="table-head">
+        <h3>Pending Review</h3>
+        <button class="btn btn-ghost" onclick="loadReviewQueue()" style="padding:7px 14px;font-size:12px;">Refresh</button>
+      </div>
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Company</th><th>Role</th><th>Match Score</th><th>Matched Skills</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="review-table-body"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">Loading Review Queue...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── PROFILE PAGE ── -->
+  <div id="page-profile" class="page">
+    <div class="page-header">
+      <h1>My Profile</h1>
+      <p>Edit your personal details, skills, and preferences</p>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x1F464;</span> Personal Details</div>
+      <div class="form-grid">
+        <div class="form-group"><label>First Name</label><input type="text" id="p-first_name" /></div>
+        <div class="form-group"><label>Last Name</label><input type="text" id="p-last_name" /></div>
+        <div class="form-group"><label>Email</label><input type="email" id="p-email" /></div>
+        <div class="form-group"><label>Phone</label><input type="text" id="p-phone" /></div>
+        <div class="form-group"><label>City</label><input type="text" id="p-city" /></div>
+        <div class="form-group"><label>State</label><input type="text" id="p-state" /></div>
+        <div class="form-group"><label>LinkedIn URL</label><input type="text" id="p-linkedin_url" /></div>
+        <div class="form-group"><label>GitHub URL</label><input type="text" id="p-github_url" /></div>
+        <div class="form-group"><label>Resume Path (Absolute)</label><input type="text" id="p-resume_path" class="full" /></div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x1F4B0;</span> Experience & Salary</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Experience (Years)</label><input type="text" id="p-total_experience_years" /></div>
+        <div class="form-group"><label>Notice Period (Days)</label><input type="text" id="p-notice_period" /></div>
+        <div class="form-group"><label>Current CTC (LPA)</label><input type="text" id="p-current_ctc" /></div>
+        <div class="form-group"><label>Expected CTC (LPA)</label><input type="text" id="p-expected_ctc" /></div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x1F511;</span> Login Credentials & Connection Check</div>
+      <div class="form-grid" style="margin-bottom: 24px;">
+        <div class="form-group"><label>LinkedIn Email</label><input type="email" id="p-linkedin_email" /></div>
+        <div class="form-group"><label>LinkedIn Password</label><input type="password" id="p-linkedin_password" /></div>
+        <div class="form-group"><label>Naukri Email</label><input type="email" id="p-naukri_email" /></div>
+        <div class="form-group"><label>Naukri Password</label><input type="password" id="p-naukri_password" /></div>
+      </div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; border-top: 1px solid var(--border); padding-top:20px;">
+        <!-- LinkedIn connection panel -->
+        <div style="background:var(--bg); border:1px solid var(--border); padding:16px; border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <span style="font-weight:700; font-size:14px;">&#x1F517; LinkedIn</span>
+            <span id="conn-status-linkedin" class="conn-badge conn-disconnected">Disconnected</span>
+          </div>
+          <div id="conn-msg-linkedin" style="font-size:12px; color:var(--muted); margin-bottom:14px; min-height:32px; line-height:1.5;">Not tested yet. Save credentials and click Test.</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-primary" id="btn-conn-linkedin" onclick="testConnection('linkedin')" style="flex:1; padding:9px 10px; font-size:12px;">Test Connection</button>
+            <button class="btn btn-ghost" id="btn-close-linkedin" onclick="closeBrowser('linkedin')" style="display:none; padding:9px 10px; font-size:12px; color:var(--red); border-color:var(--red);">Close Browser</button>
+          </div>
+        </div>
+        <!-- Naukri connection panel -->
+        <div style="background:var(--bg); border:1px solid var(--border); padding:16px; border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <span style="font-weight:700; font-size:14px;">&#x1F517; Naukri</span>
+            <span id="conn-status-naukri" class="conn-badge conn-disconnected">Disconnected</span>
+          </div>
+          <div id="conn-msg-naukri" style="font-size:12px; color:var(--muted); margin-bottom:14px; min-height:32px; line-height:1.5;">Not tested yet. Save credentials and click Test.</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-primary" id="btn-conn-naukri" onclick="testConnection('naukri')" style="flex:1; padding:9px 10px; font-size:12px;">Test Connection</button>
+            <button class="btn btn-ghost" id="btn-close-naukri" onclick="closeBrowser('naukri')" style="display:none; padding:9px 10px; font-size:12px; color:var(--red); border-color:var(--red);">Close Browser</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x1F4CD;</span> Work Preferences</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Preferred Work Mode</label>
+          <select id="pref-preferred_work_mode" style="background:var(--bg); border:1px solid var(--border); border-radius:9px; padding:10px 14px; color:var(--text); font-size:14px; font-family:inherit; outline:none;">
+            <option value="Remote">Remote</option>
+            <option value="Hybrid">Hybrid</option>
+            <option value="Onsite">Onsite</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Gender Preference</label>
+          <select id="pref-gender" style="background:var(--bg); border:1px solid var(--border); border-radius:9px; padding:10px 14px; color:var(--text); font-size:14px; font-family:inherit; outline:none;">
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Prefer not to say">Prefer not to say</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Ethnicity Preference</label>
+          <select id="pref-ethnicity" style="background:var(--bg); border:1px solid var(--border); border-radius:9px; padding:10px 14px; color:var(--text); font-size:14px; font-family:inherit; outline:none;">
+            <option value="Decline to state">Decline to state</option>
+            <option value="White">White</option>
+            <option value="Asian">Asian</option>
+            <option value="Black">Black/African American</option>
+            <option value="Hispanic">Hispanic/Latino</option>
+          </select>
+        </div>
+        <div class="form-group" style="display:flex; flex-direction:row; align-items:center; gap:8px; padding-top:20px;">
+          <input type="checkbox" id="pref-open_to_relocation" style="width:16px; height:16px;" />
+          <label for="pref-open_to_relocation" style="cursor:pointer; text-transform:none;">Open to Relocation</label>
+        </div>
+        <div class="form-group" style="display:flex; flex-direction:row; align-items:center; gap:8px; padding-top:20px;">
+          <input type="checkbox" id="pref-authorized_india" style="width:16px; height:16px;" />
+          <label for="pref-authorized_india" style="cursor:pointer; text-transform:none;">Authorized to work in India</label>
+        </div>
+        <div class="form-group" style="display:flex; flex-direction:row; align-items:center; gap:8px; padding-top:20px;">
+          <input type="checkbox" id="pref-require_sponsorship" style="width:16px; height:16px;" />
+          <label for="pref-require_sponsorship" style="cursor:pointer; text-transform:none;">Requires Visa Sponsorship</label>
+        </div>
+        <div class="form-group" style="display:flex; flex-direction:row; align-items:center; gap:8px; padding-top:20px;">
+          <input type="checkbox" id="pref-us_authorized" style="width:16px; height:16px;" />
+          <label for="pref-us_authorized" style="cursor:pointer; text-transform:none;">Authorized to work in US</label>
+        </div>
+        <div class="form-group" style="display:flex; flex-direction:row; align-items:center; gap:8px; padding-top:20px;">
+          <input type="checkbox" id="pref-disability" style="width:16px; height:16px;" />
+          <label for="pref-disability" style="cursor:pointer; text-transform:none;">Has Disability (Prefer not to disclose = Unchecked)</label>
+        </div>
+        <div class="form-group" style="display:flex; flex-direction:row; align-items:center; gap:8px; padding-top:20px;">
+          <input type="checkbox" id="pref-veteran" style="width:16px; height:16px;" />
+          <label for="pref-veteran" style="cursor:pointer; text-transform:none;">Is Military Veteran</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x1F4BB;</span> Tech-Specific Experience (Years)</div>
+      <div id="tech-exp-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:12px; margin-bottom:16px;">
+        <!-- Loaded via JS -->
+      </div>
+      <div style="display:flex; gap:10px; max-width:480px; align-items:center;">
+        <input type="text" id="new-tech-name" placeholder="Tech Name (e.g. Snowflake)" style="flex:2; padding:8px 12px; font-size:13px;" />
+        <input type="number" id="new-tech-years" placeholder="Years" style="flex:1; padding:8px 12px; font-size:13px;" min="0" />
+        <button class="btn btn-ghost" type="button" onclick="addNewTechExp()" style="padding:8px 16px;">Add</button>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x1F9E0;</span> Skills (press Enter to add)</div>
+      <div class="tag-input-wrap" id="skills-wrap" onclick="document.getElementById('skill-input').focus()">
+        <input class="tag-input" id="skill-input" placeholder="Type a skill and press Enter..." onkeydown="addTag(event,'skills','skill-input','skills-wrap')" />
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x1F50D;</span> Search Keywords</div>
+      <div class="tag-input-wrap" id="keywords-wrap" onclick="document.getElementById('kw-input').focus()">
+        <input class="tag-input" id="kw-input" placeholder="Add keyword and press Enter..." onkeydown="addTag(event,'keywords','kw-input','keywords-wrap')" />
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x1F4CD;</span> Search Locations</div>
+      <div class="tag-input-wrap" id="locations-wrap" onclick="document.getElementById('loc-input').focus()">
+        <input class="tag-input" id="loc-input" placeholder="Add location and press Enter..." onkeydown="addTag(event,'locations','loc-input','locations-wrap')" />
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x1F3AF;</span> Target Companies (leave empty to apply everywhere)</div>
+      <div class="tag-input-wrap" id="targets-wrap" onclick="document.getElementById('tgt-input').focus()">
+        <input class="tag-input" id="tgt-input" placeholder="Add company name and press Enter..." onkeydown="addTag(event,'targets','tgt-input','targets-wrap')" />
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-title"><span class="section-icon">&#x2699;&#xFE0F;</span> Match Settings</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Min Match Score % (lower = more applications)</label><input type="number" id="p-min_match_score" min="0" max="100" /></div>
+      </div>
+    </div>
+
+    <div class="save-bar">
+      <button class="btn btn-primary" onclick="saveProfile()" style="padding:12px 32px;font-size:15px;">Save All Changes</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State
+const tags = { skills: [], keywords: [], locations: [], targets: [] };
+let techExpData = {};
+let allApps = [];
+let currentLogKey = null;
+let logInterval = null;
+let logOffset = 0;
+
+// ── Navigation
+function nav(page, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  el.classList.add('active');
+  if (page === 'dashboard' || page === 'applications') loadApps();
+  if (page === 'profile') loadProfile();
+  if (page === 'review') loadReviewQueue();
+}
+
+// ── Toast
+function showToast(msg, isError = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3000);
+}
+
+// ── Stats + Apps
+async function loadStats() {
+  try {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+    document.getElementById('stat-total').textContent = d.total;
+    document.getElementById('stat-applied').textContent = d.applied;
+    document.getElementById('stat-today').textContent = d.today;
+    document.getElementById('stat-manual').textContent = d.manual;
+    document.getElementById('stat-skipped').textContent = d.skipped;
+  } catch(e) {}
+}
+
+async function loadApps() {
+  try {
+    const r = await fetch('/api/applications');
+    allApps = await r.json();
+    renderApps();
+    loadStats();
+  } catch(e) {}
+}
+
+async function loadReviewQueue() {
+  try {
+    const tb = document.getElementById('review-table-body');
+    if (tb) tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Loading Review Queue...</td></tr>';
+    
+    const r = await fetch('/api/review_queue');
+    const queue = await r.json();
+    
+    if (!queue || queue.length === 0) {
+      if (tb) tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No jobs pending review. Enjoy!</td></tr>';
+      return;
+    }
+    
+    const rows = queue.map(a => {
+      const matchedSkills = a.Matched || [];
+      const skillsBadge = matchedSkills.slice(0, 4).map(s => `<span class="tag" style="display:inline-block; margin:2px; font-size:11px; padding:2px 6px;">${s}</span>`).join('');
+      
+      return `
+        <tr id="review-row-${btoa(a.URL).replace(/=/g, '')}">
+          <td style="color:var(--muted);font-size:12px">${(a.Date||'').slice(0,16)}</td>
+          <td style="font-weight:600">${a.Company||'—'}</td>
+          <td><a href="${a.URL}" target="_blank" style="color:var(--accent); text-decoration:none;">${a.Role||'—'}</a></td>
+          <td style="color:var(--yellow); font-weight:700;">${a['Match %']||'—'}</td>
+          <td>${skillsBadge}</td>
+          <td>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-primary" onclick="approveJob('${a.URL}')" style="padding:4px 10px; font-size:11px; flex:none;">Approve</button>
+              <button class="btn btn-ghost" onclick="rejectJob('${a.URL}')" style="padding:4px 10px; font-size:11px; flex:none; color:var(--red); border-color:var(--red);">Reject</button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+    
+    if (tb) tb.innerHTML = rows;
+  } catch(e) {
+    showToast('Failed to load review queue', true);
+  }
+}
+
+async function approveJob(url) {
+  try {
+    const r = await fetch('/api/review/approve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url })
+    });
+    const d = await r.json();
+    if (d.success) {
+      showToast('Job approved! Moved to Pending Apply.');
+      const rowId = `review-row-${btoa(url).replace(/=/g, '')}`;
+      document.getElementById(rowId)?.remove();
+      loadStats();
+    } else {
+      showToast('Failed to approve job', true);
+    }
+  } catch(e) {
+    showToast('Network error', true);
+  }
+}
+
+async function rejectJob(url) {
+  try {
+    const r = await fetch('/api/review/reject', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url })
+    });
+    const d = await r.json();
+    if (d.success) {
+      showToast('Job rejected and skipped.');
+      const rowId = `review-row-${btoa(url).replace(/=/g, '')}`;
+      document.getElementById(rowId)?.remove();
+      loadStats();
+    } else {
+      showToast('Failed to reject job', true);
+    }
+  } catch(e) {
+    showToast('Network error', true);
+  }
+}
+
+function statusBadge(s) {
+  if (s === 'Applied') return '<span class="badge badge-applied">Applied</span>';
+  if (s === 'Skipped') return '<span class="badge badge-skipped">Skipped</span>';
+  if (s === 'Review') return '<span class="badge badge-manual" style="background:rgba(245,158,11,.15);color:var(--yellow)">Review</span>';
+  if (s === 'Pending Apply') return '<span class="badge badge-applied" style="background:rgba(79,142,247,.15);color:var(--accent)">Pending</span>';
+  return '<span class="badge badge-manual">Manual</span>';
+}
+
+function portalBadge(p) {
+  if (p === 'LinkedIn') return '<span class="badge badge-linkedin">LinkedIn</span>';
+  if (p === 'Naukri') return '<span class="badge badge-naukri">Naukri</span>';
+  return `<span class="badge" style="background:rgba(255,255,255,.08);color:var(--muted)">${p}</span>`;
+}
+
+function renderApps() {
+  const filter = (document.getElementById('filter-input')?.value || '').toLowerCase();
+  const filtered = allApps.filter(a =>
+    !filter || (a.Company||'').toLowerCase().includes(filter) || (a.Role||'').toLowerCase().includes(filter)
+  );
+  const rows = filtered.slice(0, 50).map(a => `
+    <tr>
+      <td style="color:var(--muted);font-size:12px">${(a.Date||'').slice(0,16)}</td>
+      <td style="font-weight:600">${a.Company||'—'}</td>
+      <td>${a.Role||'—'}</td>
+      <td>${portalBadge(a.Portal||'')}</td>
+      <td>${statusBadge(a.Status||'')}</td>
+      <td style="color:var(--accent)">${a['Match %']||'—'}</td>
+      ${a['Follow Up Date'] !== undefined ? `<td style="color:var(--muted);font-size:12px">${a['Follow Up Date']||'—'}</td>` : ''}
+    </tr>`).join('');
+
+  const tb = document.getElementById('apps-table');
+  const tbf = document.getElementById('apps-table-full');
+  if (tb) tb.innerHTML = rows || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:40px">No applications yet</td></tr>';
+  if (tbf) tbf.innerHTML = rows || '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:40px">No applications yet</td></tr>';
+}
+
+function filterApps() { renderApps(); }
+
+// ── Bot Control
+async function startBot(platform) {
+  const btn = document.getElementById('btn-' + platform);
+  const companyInput = document.getElementById('company-' + platform);
+  const company = companyInput?.value.trim() || '';
+
+  btn.disabled = true;
+  btn.textContent = 'Starting...';
+
+  try {
+    const r = await fetch('/api/bot/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform, company, headless: false })
+    });
+    const d = await r.json();
+    if (d.success) {
+      showToast(d.message);
+      viewLogs(platform);
+    } else {
+      showToast(d.message, true);
+      btn.disabled = false;
+      btn.textContent = `Start ${platform.charAt(0).toUpperCase()+platform.slice(1)} Bot`;
+    }
+  } catch(e) {
+    showToast('Failed to start bot', true);
+    btn.disabled = false;
+  }
+}
+
+function viewLogs(key) {
+  currentLogKey = key;
+  logOffset = 0;
+  document.getElementById('log-title').textContent = key.charAt(0).toUpperCase() + key.slice(1) + ' Bot';
+  document.getElementById('log-panel').innerHTML = '<div class="log-empty">Waiting for output...</div>';
+  if (logInterval) clearInterval(logInterval);
+  pollLogs();
+  logInterval = setInterval(pollLogs, 1500);
+}
+
+async function pollLogs() {
+  if (!currentLogKey) return;
+  try {
+    const r = await fetch(`/api/bot/logs/${currentLogKey}?offset=${logOffset}`);
+    const d = await r.json();
+    const panel = document.getElementById('log-panel');
+
+    if (d.logs.length > 0) {
+      if (logOffset === 0) panel.innerHTML = '';
+      d.logs.forEach(line => {
+        const div = document.createElement('div');
+        div.className = 'log-line' +
+          (line.includes('[OK]') || line.includes('[SUCCESS]') ? ' ok' :
+           line.includes('[FAIL]') || line.includes('[ERROR]') ? ' fail' :
+           line.includes('[WARNING]') || line.includes('[WARN]') ? ' warn' :
+           line.includes('[MATCH]') || line.includes('[LOGIN]') ? ' info' : '');
+        div.textContent = line;
+        panel.appendChild(div);
+      });
+      logOffset = d.total;
+      panel.scrollTop = panel.scrollHeight;
+    }
+
+    // Update running status badges
+    const statusEl = document.getElementById('status-' + currentLogKey);
+    if (statusEl) {
+      statusEl.textContent = d.running ? 'Running' : 'Idle';
+      statusEl.className = 'bot-status ' + (d.running ? 'running' : 'idle');
+    }
+    const btn = document.getElementById('btn-' + currentLogKey);
+    if (btn) btn.disabled = d.running;
+
+    if (!d.running && logInterval) {
+      clearInterval(logInterval);
+      logInterval = null;
+      loadStats();
+      loadApps();
+    }
+  } catch(e) {}
+}
+
+// ── Connection Verification
+async function testConnection(platform) {
+  const btn = document.getElementById(`btn-conn-${platform}`);
+  if (btn) btn.disabled = true;
+
+  // Save credentials first so config/profile.py has the latest values
+  showToast('Saving credentials and launching Chrome...');
+  await saveProfile();
+
+  try {
+    const r = await fetch('/api/connection/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ platform })
+    });
+    const d = await r.json();
+    if (d.success) {
+      showToast(d.message);
+      startPollingConnection();
+    } else {
+      showToast(d.message, true);
+      if (btn) btn.disabled = false;
+    }
+  } catch(e) {
+    showToast('Cannot reach the server. Make sure server.py is running.', true);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function closeBrowser(platform) {
+  try {
+    await fetch('/api/connection/close', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ platform })
+    });
+    // Reset UI
+    const badge = document.getElementById(`conn-status-${platform}`);
+    if (badge) { badge.textContent = 'Disconnected'; badge.className = 'conn-badge conn-disconnected'; }
+    const msg = document.getElementById(`conn-msg-${platform}`);
+    if (msg) msg.textContent = 'Browser closed. Test again to reconnect.';
+    const closeBtn = document.getElementById(`btn-close-${platform}`);
+    if (closeBtn) closeBtn.style.display = 'none';
+    const testBtn = document.getElementById(`btn-conn-${platform}`);
+    if (testBtn) { testBtn.disabled = false; testBtn.textContent = 'Test Connection'; }
+  } catch(e) {}
+}
+
+let connPollInterval = null;
+
+function startPollingConnection() {
+  if (connPollInterval) clearInterval(connPollInterval);
+  connPollConnection();
+  connPollInterval = setInterval(connPollConnection, 2500);
+}
+
+async function connPollConnection() {
+  try {
+    const r = await fetch('/api/connection/status');
+    const status = await r.json();
+    let anyChecking = false;
+
+    for (const [platform, data] of Object.entries(status)) {
+      const badge    = document.getElementById(`conn-status-${platform}`);
+      const msg      = document.getElementById(`conn-msg-${platform}`);
+      const testBtn  = document.getElementById(`btn-conn-${platform}`);
+      const closeBtn = document.getElementById(`btn-close-${platform}`);
+
+      const s = data.status;
+
+      // Update badge
+      if (badge) {
+        badge.textContent = s;
+        const cssClass = s === 'Connected'          ? 'conn-connected'   :
+                         s === 'Checking'           ? 'conn-checking'    :
+                         s === 'Challenge Required' ? 'conn-challenge'   :
+                         s === 'Failed'             ? 'conn-failed'      : 'conn-disconnected';
+        badge.className = `conn-badge ${cssClass}`;
+      }
+      if (msg) msg.textContent = data.message || '';
+
+      // Buttons
+      if (testBtn) {
+        testBtn.disabled = (s === 'Checking');
+        testBtn.textContent = s === 'Checking' ? 'Checking...' : 'Test Connection';
+      }
+      if (closeBtn) {
+        closeBtn.style.display = (s === 'Connected' || s === 'Challenge Required') ? 'inline-block' : 'none';
+      }
+
+      if (s === 'Checking' || s === 'Challenge Required') anyChecking = true;
+    }
+
+    if (!anyChecking && connPollInterval) {
+      clearInterval(connPollInterval);
+      connPollInterval = null;
+    }
+  } catch(e) {}
+}
+
+// Keep legacy alias
+async function pollConnection() { startPollingConnection(); }
+
+// ── Profile Loading / Editing / Saving
+async function loadProfile() {
+  const r = await fetch('/api/profile');
+  const d = await r.json();
+  if (d.error) { showToast('Failed to load profile: ' + d.error, true); return; }
+
+  const p = d.profile || {};
+  const fields = ['first_name','last_name','email','phone','city','state','linkedin_url','github_url',
+                  'total_experience_years','notice_period','current_ctc','expected_ctc',
+                  'linkedin_email','linkedin_password','naukri_email','naukri_password','resume_path'];
+  fields.forEach(f => {
+    const el = document.getElementById('p-' + f);
+    if (el) el.value = p[f] || '';
+  });
+
+  document.getElementById('p-min_match_score').value = d.min_match_score || 30;
+
+  renderTags('skills', d.skills || [], 'skills-wrap', 'skill-input');
+  renderTags('keywords', d.search_keywords || [], 'keywords-wrap', 'kw-input');
+  renderTags('locations', d.search_locations || [], 'locations-wrap', 'loc-input');
+  renderTags('targets', d.target_companies || [], 'targets-wrap', 'tgt-input');
+
+  // Load tech experience
+  techExpData = d.tech_experience || {};
+  renderTechExp();
+
+  // Load preferences
+  const w = d.work_preferences || {};
+  document.getElementById('pref-open_to_relocation').checked = !!w.open_to_relocation;
+  document.getElementById('pref-preferred_work_mode').value = w.preferred_work_mode || 'Hybrid';
+  document.getElementById('pref-authorized_india').checked = !!w.authorized_india;
+  document.getElementById('pref-require_sponsorship').checked = !!w.require_sponsorship;
+  document.getElementById('pref-us_authorized').checked = !!w.us_authorized;
+  document.getElementById('pref-disability').checked = !!w.disability;
+  document.getElementById('pref-veteran').checked = !!w.veteran;
+  document.getElementById('pref-gender').value = w.gender || 'Prefer not to say';
+  document.getElementById('pref-ethnicity').value = w.ethnicity || 'Decline to state';
+
+  // Check initial connection status
+  pollConnection();
+}
+
+function renderTechExp() {
+  const container = document.getElementById('tech-exp-container');
+  container.innerHTML = '';
+  for (const [tech, years] of Object.entries(techExpData)) {
+    const div = document.createElement('div');
+    div.className = 'form-group';
+    div.style = 'background:var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 8px; position: relative;';
+    div.innerHTML = `
+      <label style="text-transform:none; font-weight:700; font-size:13px;">${tech.toUpperCase()}</label>
+      <input type="number" class="tech-exp-input" data-tech="${tech}" value="${years}" style="padding: 6px 10px; font-size: 13px; margin-top: 6px; width:100%;" />
+      <span onclick="removeTechExp('${tech}')" style="position: absolute; top: 8px; right: 10px; cursor: pointer; color: var(--red); font-size: 14px;">&#x2715;</span>
+    `;
+    container.appendChild(div);
+  }
+}
+
+function removeTechExp(tech) {
+  delete techExpData[tech];
+  renderTechExp();
+}
+
+function addNewTechExp() {
+  const nameInp = document.getElementById('new-tech-name');
+  const yearsInp = document.getElementById('new-tech-years');
+  const name = nameInp.value.trim().toLowerCase();
+  const years = yearsInp.value.trim();
+
+  if (name && years !== '') {
+    techExpData[name] = years;
+    renderTechExp();
+    nameInp.value = '';
+    yearsInp.value = '';
+  } else {
+    showToast('Please specify tech name and years', true);
+  }
+}
+
+function renderTags(key, items, wrapId, inputId) {
+  tags[key] = [...items];
+  const wrap = document.getElementById(wrapId);
+  const inp = document.getElementById(inputId);
+  const existing = wrap.querySelectorAll('.tag');
+  existing.forEach(e => e.remove());
+  tags[key].forEach((item, i) => {
+    const tag = document.createElement('div');
+    tag.className = 'tag';
+    tag.innerHTML = `${item}<span class="tag-remove" onclick="removeTag('${key}', ${i}, '${wrapId}', '${inputId}')">&#x2715;</span>`;
+    wrap.insertBefore(tag, inp);
+  });
+}
+
+function addTag(e, key, inputId, wrapId) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const inp = document.getElementById(inputId);
+    const val = inp.value.trim();
+    if (val && !tags[key].includes(val)) {
+      tags[key].push(val);
+      renderTags(key, tags[key], wrapId, inputId);
+      inp.value = '';
+    }
+  }
+}
+
+function removeTag(key, index, wrapId, inputId) {
+  tags[key].splice(index, 1);
+  renderTags(key, tags[key], wrapId, inputId);
+}
+
+async function saveProfile() {
+  const profileFields = ['first_name','last_name','email','phone','city','state','linkedin_url','github_url',
+    'total_experience_years','notice_period','current_ctc','expected_ctc',
+    'linkedin_email','linkedin_password','naukri_email','naukri_password','resume_path'];
+  const profile = {};
+  profileFields.forEach(f => {
+    const el = document.getElementById('p-' + f);
+    if (el) profile[f] = el.value;
+  });
+
+  // Collect tech experience inputs
+  const techExp = {};
+  document.querySelectorAll('.tech-exp-input').forEach(inp => {
+    techExp[inp.getAttribute('data-tech')] = inp.value;
+  });
+
+  // Collect preferences
+  const workPreferences = {
+    open_to_relocation: document.getElementById('pref-open_to_relocation').checked,
+    preferred_work_mode: document.getElementById('pref-preferred_work_mode').value,
+    authorized_india: document.getElementById('pref-authorized_india').checked,
+    require_sponsorship: document.getElementById('pref-require_sponsorship').checked,
+    us_authorized: document.getElementById('pref-us_authorized').checked,
+    disability: document.getElementById('pref-disability').checked,
+    veteran: document.getElementById('pref-veteran').checked,
+    gender: document.getElementById('pref-gender').value,
+    ethnicity: document.getElementById('pref-ethnicity').value
+  };
+
+  const body = {
+    profile,
+    skills: tags.skills,
+    search_keywords: tags.keywords,
+    search_locations: tags.locations,
+    target_companies: tags.targets,
+    min_match_score: parseInt(document.getElementById('p-min_match_score').value) || 30,
+    tech_experience: techExp,
+    work_preferences: workPreferences
+  };
+
+  try {
+    const r = await fetch('/api/profile', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const d = await r.json();
+    if (d.success) showToast('Profile saved successfully!');
+    else showToast(d.message, true);
+  } catch(e) {
+    showToast('Failed to save profile', true);
+  }
+}
+
+// ── Init
+loadStats();
+loadApps();
+setInterval(loadStats, 10000);
+</script>
+</body>
+</html>

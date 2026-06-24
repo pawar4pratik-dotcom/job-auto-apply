@@ -1,0 +1,1434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Search Bot — Senior Engineer Control Center</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=3.1">
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="terminal-badge" id="terminal-stats-badge">
+    <div class="tline"><span class="t-g">▶</span> bot.status() == <span id="term-status" class="t-g">IDLE</span></div>
+    <div class="tline"><span class="t-b">✓</span> active daily limit: <span id="term-limit">{{ daily_limit }}</span></div>
+    <div class="tline"><span class="t-b">✓</span> applied today: <span id="term-applied" class="t-g">0</span></div>
+    <div class="tline"><span class="t-y">⚡</span> skipped today: <span id="term-skipped" class="t-y">0</span></div>
+    <div class="tline"><span class="t-b">→</span> unresolved Q&As: <span id="term-qa" class="t-b">0</span></div>
+  </div>
+
+  <div class="eyebrow">Senior Engineer Blueprint — 30 Years Distilled</div>
+  <h1>The Job Search Bot<br>that <em>actually</em> works</h1>
+  <p class="hero-sub">Full architecture, logic, UI, portals, tracking, and a 16-week implementation plan — built the right way, not the fast way.</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="stat-num">8–10×</div>
+      <div class="stat-label">more applications/week</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">~20%</div>
+      <div class="stat-label">higher response rate</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">2-stage</div>
+      <div class="stat-label">AI scoring engine</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">FSM</div>
+      <div class="stat-label">per-application tracking</div>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD SECTION -->
+<section style="background: #0d0f14; border-top: 1px solid var(--border);">
+  <div class="section-label">Interactive Console</div>
+  <h2 style="margin-bottom: 20px;">Control Center & Application Hub</h2>
+  <p style="margin-bottom: 40px; max-width: 700px;">Trigger new automation runs, modify candidate profiles, manage incoming self-learning Q&A forms, and visualize historical submissions directly from the live control tabs below.</p>
+
+  <div class="tabs-container">
+    <div class="tab-bar">
+      <button class="tab-btn active" id="btn-tab-feed" onclick="switchTab('feed')">📋 Job Feed / Database</button>
+      <button class="tab-btn" id="btn-tab-tracker" onclick="switchTab('tracker')">📊 Tracker (Kanban)</button>
+      <button class="tab-btn" id="btn-tab-review" onclick="switchTab('review')">⚠️ Review Queue / Resolver (<span id="qa-tab-count">0</span>)</button>
+      <button class="tab-btn" id="btn-tab-resume" onclick="switchTab('resume')">📄 Resume & Cover</button>
+      <button class="tab-btn" id="btn-tab-prep" onclick="switchTab('prep')">🎯 Interview Prep</button>
+      <button class="tab-btn" id="btn-tab-analytics" onclick="switchTab('analytics')">📈 Funnel Analytics</button>
+      <button class="tab-btn" id="btn-tab-settings" onclick="toggleSettings(true)" style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+        ⚙️ Settings 
+        <span id="settings-alert-badge" style="display:none; width: 8px; height: 8px; background-color: #ff3b30; border-radius: 50%; box-shadow: 0 0 8px #ff3b30; animation: pulse 1.5s infinite;"></span>
+      </button>
+    </div>
+
+    <!-- JOB FEED / DATABASE -->
+    <div class="tab-panel active" id="tab-feed">
+      <!-- Notification Center -->
+      <div id="notification-banner" style="display:none !important; margin-bottom: 20px; background: linear-gradient(135deg, rgba(255, 179, 0, 0.1) 0%, rgba(239, 68, 68, 0.1) 100%); border: 1px solid rgba(255, 179, 0, 0.25); border-radius: 8px; padding: 16px;">
+         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div style="flex:1; min-width:300px;">
+               <h4 style="margin:0; color:#ffb300; font-size:14px; font-weight:600; display:flex; align-items:center; gap:6px;">
+                  ⚠️ Company Credentials Recommended
+               </h4>
+               <p id="notification-msg" style="margin:6px 0 0 0; font-size:12px; color:var(--text-dim); line-height:1.5;"></p>
+            </div>
+            <div style="display:flex; gap:10px;">
+               <button class="mock-btn" style="padding:6px 14px; font-size:11px; margin:0; background:#ffb300; color:#000;" onclick="openCompanyCredTab()">🔑 Setup Credentials</button>
+               <button class="mock-btn mock-btn-outline" style="padding:6px 14px; font-size:11px; margin:0;" onclick="dismissNotification()">Dismiss</button>
+            </div>
+         </div>
+      </div>
+      <div class="mock-header">
+        <div class="mock-title">Active Database Control</div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <label style="font-size:12px; color:var(--text-dim);">Run limit: </label>
+          <input type="number" id="max-apps-input" class="input-control" value="15" min="1" max="100" style="width: 70px; padding:4px 8px; margin:0;">
+          <label class="switch-group" style="margin:0;">
+            <input type="checkbox" id="headless-checkbox" {% if headless_default %}checked{% endif %}> Headless Mode
+          </label>
+          <span style="font-size:11px; color:var(--text-muted);">Use quick buttons below &#8595;</span>
+        </div>
+      </div>
+
+      <!-- Real-Time Metrics Summary Block -->
+      <div class="stats-grid-horizontal">
+        <div style="background:var(--surface2); border:1px solid var(--border); padding:16px; border-radius:8px; display:flex; flex-direction:column; align-items:center;">
+          <div style="font-size: 24px; font-weight:700; color:var(--accent);" id="cnt-applied">0</div>
+          <div style="font-size:10px; font-family:var(--mono); color:var(--text-muted); text-transform:uppercase; margin-top:4px;">Applied Today</div>
+        </div>
+        <div style="background:var(--surface2); border:1px solid var(--border); padding:16px; border-radius:8px; display:flex; flex-direction:column; align-items:center;">
+          <div style="font-size: 24px; font-weight:700; color:var(--accent3);" id="cnt-skipped">0</div>
+          <div style="font-size:10px; font-family:var(--mono); color:var(--text-muted); text-transform:uppercase; margin-top:4px;">Skipped Today</div>
+        </div>
+        <div style="background:var(--surface2); border:1px solid var(--border); padding:16px; border-radius:8px; display:flex; flex-direction:column; align-items:center;">
+          <div style="font-size: 24px; font-weight:700; color:var(--accent4);" id="cnt-manual">0</div>
+          <div style="font-size:10px; font-family:var(--mono); color:var(--text-muted); text-transform:uppercase; margin-top:4px;">Manual Needed</div>
+        </div>
+        <div style="background:var(--surface2); border:1px solid var(--border); padding:16px; border-radius:8px; display:flex; flex-direction:column; align-items:center;">
+          <div style="font-size: 24px; font-weight:700; color:var(--accent2);" id="cnt-total">0</div>
+          <div style="font-size:10px; font-family:var(--mono); color:var(--text-muted); text-transform:uppercase; margin-top:4px;">Total Logs</div>
+        </div>
+      </div>
+
+      <!-- Quick Access Bar (Phase UX) -->
+      <div style="display:flex; gap:8px; margin-top:16px; margin-bottom:4px; flex-wrap:wrap;">
+        <button onclick="runBot('all')" style="flex:1; min-width:120px; padding:10px 16px; border:none; border-radius:8px; cursor:pointer; font-size:12px; font-weight:700; background:linear-gradient(135deg,#00e5a0,#009933); color:#000; transition:transform 0.15s; box-shadow:0 3px 10px rgba(0,229,160,0.3);" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">▶ Run All Bots</button>
+        <button onclick="runBot('linkedin')" style="flex:1; min-width:120px; padding:10px 16px; border:1px solid rgba(0,119,181,0.5); border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; background:rgba(0,119,181,0.12); color:#60a5fa; transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">&#128101; LinkedIn Only</button>
+        <button onclick="runBot('naukri')" style="flex:1; min-width:120px; padding:10px 16px; border:1px solid rgba(255,107,107,0.4); border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; background:rgba(255,107,107,0.1); color:#f87171; transition:transform 0.15s;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">&#127470;&#127475; Naukri Only</button>
+        <button onclick="stopBot()" style="padding:10px 16px; border:1px solid rgba(239,68,68,0.4); border-radius:8px; cursor:pointer; font-size:12px; font-weight:600; background:rgba(239,68,68,0.1); color:#f87171;" >&#9632; Stop</button>
+      </div>
+
+      <!-- Live Action Stream (Normal Bot Runs) -->
+      <div class="log-header" style="margin-top:24px;">
+        <h2>📜 Live Action Stream (Normal Bot Runs)</h2>
+        <div class="log-tabs">
+          <button class="log-tab active-all bot-log-tab" onclick="setFilterBot('all', this)">All</button>
+          <button class="log-tab bot-log-tab" onclick="setFilterBot('success', this)">Success</button>
+          <button class="log-tab bot-log-tab" onclick="setFilterBot('warn', this)">Warnings</button>
+          <button class="log-tab bot-log-tab" onclick="setFilterBot('error', this)">Errors</button>
+          <button class="log-tab" style="margin-left: 0.5rem; background:rgba(255,255,255,0.05)" onclick="clearLogsBot()">Clear</button>
+        </div>
+      </div>
+      <div class="console-box" id="console-bot" style="margin-bottom:28px;">
+        <!-- Dynamic logs stream -->
+      </div>
+
+      <!-- Job Application Database History -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
+        <h2>📋 Job Application Database History (Bot Run Results)</h2>
+        <button class="mock-btn mock-btn-outline" onclick="exportCSV()">📥 Export CSV Tracker</button>
+      </div>
+      
+      <div class="table-wrap" style="margin-bottom: 28px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Date Applied</th>
+              <th>Company</th>
+              <th>Role</th>
+              <th>Portal</th>
+              <th>Status</th>
+              <th>Match</th>
+              <th>Posted</th>
+              <th>Reason / Skills</th>
+            </tr>
+          </thead>
+          <tbody id="app-tbody">
+            <!-- Dynamic Database Applications -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Section Divider -->
+      <div style="border-top:1px dashed var(--border); margin:40px 0;"></div>
+
+      <!-- Targeted Search Card -->
+      <!-- Targeted Unified Search & Recruiter Lead Scraper card -->
+      <div style="background:var(--surface1); border:1px solid var(--border); padding:20px; border-radius:12px; margin-top:20px; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+          <h3 style="margin:0; color:var(--accent); font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px;">
+            🎯 Targeted Search & Recruiter Lead Scraper
+          </h3>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:11px; color:var(--text-muted); margin:0;">Profile:</label>
+            <select id="search-profile-select" onchange="loadSearchProfile(this.value)" class="input-control" style="width:160px; font-size:12px; margin:0; padding:5px 8px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); cursor:pointer;">
+              <option value="">-- Select Profile --</option>
+            </select>
+            <button onclick="saveCurrentSearchProfile()" class="mock-btn mock-btn-outline" style="font-size:11px; margin:0; padding:5px 10px; border-radius:6px; border:1px solid rgba(0,229,160,0.4); color:#00e5a0; background:rgba(0,229,160,0.05);" onmouseover="this.style.background='rgba(0,229,160,0.1)'" onmouseout="this.style.background='rgba(0,229,160,0.05)'">💾 Save</button>
+            <button onclick="deleteCurrentSearchProfile()" class="mock-btn mock-btn-outline" style="font-size:11px; margin:0; padding:5px 10px; border-radius:6px; border:1px solid rgba(239,68,68,0.4); color:#ef4444; background:rgba(239,68,68,0.05);" onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='rgba(239,68,68,0.05)'">🗑️ Delete</button>
+          </div>
+        </div>
+        <p style="margin:4px 0 16px 0; font-size:12px; color:var(--text-dim);">
+          Scan custom target companies (e.g. PwC via direct API), run targeted portal queries (LinkedIn/Naukri), and harvest Google Forms from HR recruiter posts.
+        </p>
+        
+        <!-- Row 1: Company + Skills -->
+        <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <label style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; display:block; margin-bottom:5px;">Company (optional)</label>
+            <div style="position:relative;">
+              <input type="text" id="target-company-input" class="input-control" placeholder="PwC, Accenture, Any..." style="width:100%; margin:0; padding-right:90px;" oninput="filterCompanyDropdown(this.value)" onfocus="showCompanyDrop()" onblur="setTimeout(hideCompanyDrop,200)">
+              <button onclick="document.getElementById('target-company-input').value=''; filterCompanyDropdown('')" style="position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:10px;">Any ✕</button>
+            </div>
+            <div id="company-dropdown" style="display:none; position:absolute; z-index:99; background:var(--surface2); border:1px solid var(--border); border-radius:8px; max-height:160px; overflow-y:auto; width:220px; box-shadow:0 8px 24px rgba(0,0,0,0.4); margin-top:2px;"></div>
+          </div>
+          <div>
+            <label style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; display:block; margin-bottom:5px;">Skills / Role</label>
+            <input type="text" id="target-skills-input" class="input-control" placeholder="Data Engineer, PySpark, Snowflake, AWS..." style="width:100%; margin:0;">
+            <div style="display:flex; gap:5px; flex-wrap:wrap; margin-top:6px;">
+              <button class="skill-chip" onclick="addSkillChip('Data Engineer')">Data Engineer</button>
+              <button class="skill-chip" onclick="addSkillChip('PySpark')">PySpark</button>
+              <button class="skill-chip" onclick="addSkillChip('Snowflake')">Snowflake</button>
+              <button class="skill-chip" onclick="addSkillChip('AWS')">AWS</button>
+              <button class="skill-chip" onclick="addSkillChip('Azure')">Azure</button>
+              <button class="skill-chip" onclick="addSkillChip('SQL')">SQL</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: City selector chips -->
+        <div style="margin-bottom:14px;">
+          <label style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; display:block; margin-bottom:7px;">Location — Select Cities (or type custom below)</label>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+            <button class="city-chip active" id="city-chip-pune"      onclick="toggleCity('Pune')">&#128205; Pune</button>
+            <button class="city-chip" id="city-chip-mumbai"          onclick="toggleCity('Mumbai')">&#128205; Mumbai</button>
+            <button class="city-chip" id="city-chip-bengaluru"       onclick="toggleCity('Bengaluru')">&#128205; Bengaluru</button>
+            <button class="city-chip" id="city-chip-hyderabad"       onclick="toggleCity('Hyderabad')">&#128205; Hyderabad</button>
+            <button class="city-chip" id="city-chip-chennai"         onclick="toggleCity('Chennai')">&#128205; Chennai</button>
+            <button class="city-chip" id="city-chip-gurugram"        onclick="toggleCity('Gurugram')">&#128205; Gurugram</button>
+            <button class="city-chip" id="city-chip-noida"           onclick="toggleCity('Noida')">&#128205; Noida</button>
+            <button class="city-chip" id="city-chip-delhi-ncr"       onclick="toggleCity('Delhi NCR')">&#128205; Delhi NCR</button>
+            <button class="city-chip" id="city-chip-remote"          onclick="toggleCity('Remote')">&#127968; Remote</button>
+            <button class="city-chip" id="city-chip-pan-india"       onclick="toggleCity('Pan India')">&#127760; Pan India</button>
+          </div>
+          <input type="text" id="target-location-input" class="input-control" placeholder="Selected cities appear here..." style="width:100%; margin:0; font-size:12px;" readonly>
+        </div>
+
+        <!-- Row 3: Action Buttons -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <button onclick="runTargetedSearch()" id="targeted-search-btn"
+            style="flex:1; min-width:160px; padding:11px 20px; border:none; border-radius:8px; cursor:pointer; font-size:13px; font-weight:700;
+                   background:linear-gradient(135deg,#00e5a0,#009933); color:#000;
+                   transition:all 0.2s; box-shadow:0 3px 12px rgba(0,229,160,0.35);"
+            onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+            &#128640; Search Jobs (4 Portals)
+          </button>
+          <button onclick="runRecruiterScraper()" id="recruiter-btn"
+            style="flex:1; min-width:160px; padding:11px 20px; border:1px solid rgba(167,139,250,0.4); border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;
+                   background:rgba(167,139,250,0.1); color:#a78bfa;
+                   transition:all 0.2s;"
+            onmouseover="this.style.background='rgba(167,139,250,0.2)'" onmouseout="this.style.background='rgba(167,139,250,0.1)'">
+            &#128236; Find Recruiter Forms
+          </button>
+          <div style="font-size:11px; color:var(--text-muted); text-align:right; flex:1;">
+            Searches: Workday API + LinkedIn<br>+ Naukri + Indeed — no login needed
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Action Stream (Targeted Search) -->
+      <div class="log-header" style="margin-top:24px;">
+        <h2>📜 Live Action Stream (Targeted Search)</h2>
+        <div class="log-tabs">
+          <button class="log-tab active-all search-log-tab" onclick="setFilterSearch('all', this)">All</button>
+          <button class="log-tab search-log-tab" onclick="setFilterSearch('success', this)">Success</button>
+          <button class="log-tab search-log-tab" onclick="setFilterSearch('warn', this)">Warnings</button>
+          <button class="log-tab search-log-tab" onclick="setFilterSearch('error', this)">Errors</button>
+          <button class="log-tab" style="margin-left: 0.5rem; background:rgba(255,255,255,0.05)" onclick="clearLogsSearch()">Clear</button>
+        </div>
+      </div>
+      <div class="console-box" id="console-search" style="margin-bottom:28px;">
+        <!-- Dynamic logs stream -->
+      </div>
+
+      <!-- Targeted Search Results Panel -->
+      <div id="targeted-results-panel" style="display:none; background:var(--surface1); border:1px solid var(--border); padding:20px; border-radius:12px; margin-top:20px; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2); backdrop-filter: blur(10px);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+          <h3 style="margin:0; color:var(--accent2); font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px;">
+            📋 Collated Targeted Search Results
+            <span id="targeted-count-badge" style="background:var(--accent2); color:#000; font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; margin-left:4px;"></span>
+          </h3>
+          <div style="display:flex; gap:8px;">
+            <span id="targeted-high-match" style="font-size:11px; color:#22c55e; font-weight:600;"></span>
+            <button class="mock-btn mock-btn-outline" onclick="refreshTargetedResults()" style="padding:5px 12px; font-size:11px; margin:0;">🔄 Refresh</button>
+          </div>
+        </div>
+        <p style="margin:0 0 16px 0; font-size:12px; color:var(--text-dim);">
+          Jobs sorted by match score. AI-scored against your skills profile. Deduplicated across portals.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Portal</th>
+                <th>Company</th>
+                <th>Role</th>
+                <th>Location</th>
+                <th>Posted</th>
+                <th>Score</th>
+                <th>Decision</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="targeted-results-tbody">
+              <!-- Dynamically rendered -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recruiter Leads Panel (ISSUE13-FIX: was never shown in UI) -->
+      <div id="recruiter-leads-panel" style="display:none; background:var(--surface1); border:1px solid rgba(99,102,241,0.35); padding:20px; border-radius:12px; margin-top:20px; box-shadow: 0 8px 32px 0 rgba(99,102,241,0.1); backdrop-filter: blur(10px);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+          <h3 style="margin:0; color:#a78bfa; font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px;">
+            📬 Recruiter Form Leads
+            <span id="leads-count-badge" style="background:#a78bfa; color:#000; font-size:10px; padding:2px 8px; border-radius:10px; font-weight:700; margin-left:4px;"></span>
+          </h3>
+          <button class="mock-btn mock-btn-outline" onclick="refreshRecruiterLeads()" style="padding:5px 12px; font-size:11px; margin:0;">🔄 Refresh</button>
+        </div>
+        <p style="margin:0 0 16px 0; font-size:12px; color:var(--text-dim);">
+          Google Forms &amp; MS Forms found in LinkedIn recruiter posts. Click to open and apply directly.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Company</th>
+                <th>Post Snippet</th>
+                <th>Form Type</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="recruiter-leads-tbody">
+              <!-- Dynamically rendered -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRACKER (KANBAN) -->
+    <div class="tab-panel" id="tab-tracker">
+      <div class="mock-header">
+        <div class="mock-title">Interactive Kanban Tracking Board</div>
+        <div style="font-size:12px; color:var(--text-muted);" id="kanban-total-count">0 active applications tracked</div>
+      </div>
+      <div class="kanban" id="kanban-columns">
+        <div class="kan-col">
+          <div class="kan-head" style="color:var(--accent4);">Review / Drafts (<span id="kb-count-draft">0</span>)</div>
+          <div id="kb-col-draft"></div>
+        </div>
+        <div class="kan-col">
+          <div class="kan-head" style="color:var(--accent2);">Applied (<span id="kb-count-applied">0</span>)</div>
+          <div id="kb-col-applied"></div>
+        </div>
+        <div class="kan-col">
+          <div class="kan-head" style="color:var(--accent);">Shortlisted / Match (<span id="kb-count-match">0</span>)</div>
+          <div id="kb-col-match"></div>
+        </div>
+        <div class="kan-col">
+          <div class="kan-head" style="color:#a78bfa;">Interview (<span id="kb-count-interview">0</span>)</div>
+          <div id="kb-col-interview"></div>
+        </div>
+        <div class="kan-col">
+          <div class="kan-head" style="color:var(--text-muted);">Closed / Skip (<span id="kb-count-closed">0</span>)</div>
+          <div id="kb-col-closed"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- REVIEW QUEUE / RESOLVER -->
+    <div class="tab-panel" id="tab-review">
+      <div class="mock-header" style="justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap:10px;">
+        <div class="mock-title">Self-Learning Form Resolver Queue</div>
+        <div style="display:flex; gap:10px;">
+          <button class="tab-btn active" id="btn-qa-sub-pending" onclick="switchQASubTab('pending')" style="padding: 6px 14px; font-size:11px; margin:0;">⚠️ Pending Review (<span id="qa-sub-pending-count">0</span>)</button>
+          <button class="tab-btn" id="btn-qa-sub-jobs" onclick="switchQASubTab('jobs')" style="padding: 6px 14px; font-size:11px; margin:0;">📋 Jobs Pending Review (<span id="jobs-review-count">0</span>)</button>
+          <button class="tab-btn" id="btn-qa-sub-all" onclick="switchQASubTab('all')" style="padding: 6px 14px; font-size:11px; margin:0;">📚 Memory Bank Library</button>
+        </div>
+      </div>
+      
+      <!-- Pending subtab explanation -->
+      <div id="qa-pane-pending-info">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:15px; background:rgba(124,58,237,0.05); border:1px solid rgba(124,58,237,0.15); padding:16px; border-radius:10px;">
+          <p style="font-size:13px; color:var(--text-dim); margin:0; flex:1; min-width:300px; line-height:1.5;">When a browser automation bot hits a form questionnaire field it doesn't recognize (like specific cultural values, sponsorship details, or custom text prompts), it caches the question here. Type the answer and save it to programmatically build the bot's custom Q&A memory store so it never skips this question again!</p>
+          <button id="ai-auto-resolve-btn" onclick="aiAutoResolveQA()" class="mock-btn" style="padding:10px 18px; border-radius:8px; font-weight:700; background:linear-gradient(135deg, #a78bfa, #7c3aed); color:#fff; border:none; transition:all 0.2s; box-shadow:0 4px 12px rgba(124,58,237,0.3);" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform='none'">
+            ✨ AI Auto-Resolve All
+          </button>
+        </div>
+      </div>
+
+      <!-- Jobs Pending Review subtab explanation -->
+      <div id="qa-pane-jobs-info" style="display:none; margin-bottom: 20px;">
+        <p style="font-size:13px; color:var(--text-dim); margin-bottom:20px;">Review borderline job matches (scores between 55% and 74%) before the bot submits your application. You can view missing skills to make an informed decision to approve (triggers background application) or reject (skips the job).</p>
+      </div>
+
+      <!-- Memory bank subtab explanation & category selector -->
+      <div id="qa-pane-all-info" style="display:none; margin-bottom: 20px;">
+        <p style="font-size:13px; color:var(--text-dim); margin-bottom:15px;">Manage your bot's custom knowledge library. Categorize questions and toggle between <strong>Auto-Answer</strong> (automatic filling using your saved answer) and <strong>Manual Entry</strong> (bot skips filling this field and lets you do it manually).</p>
+        
+        <div style="display:flex; gap:8px; flex-wrap:wrap; background: var(--surface2); padding: 8px; border-radius: 8px; border: 1px solid var(--border);">
+          <button class="mock-btn active" id="btn-qa-cat-all" onclick="filterQACategory('all')" style="padding: 4px 10px; font-size:10px; margin:0; font-family:var(--mono);">ALL</button>
+          <button class="mock-btn mock-btn-outline" id="btn-qa-cat-exp" onclick="filterQACategory('exp')" style="padding: 4px 10px; font-size:10px; margin:0; font-family:var(--mono);">💡 Experience & Skills</button>
+          <button class="mock-btn mock-btn-outline" id="btn-qa-cat-comp" onclick="filterQACategory('comp')" style="padding: 4px 10px; font-size:10px; margin:0; font-family:var(--mono);">💰 Salary & CTC</button>
+          <button class="mock-btn mock-btn-outline" id="btn-qa-cat-time" onclick="filterQACategory('time')" style="padding: 4px 10px; font-size:10px; margin:0; font-family:var(--mono);">⏳ Notice & Timeline</button>
+          <button class="mock-btn mock-btn-outline" id="btn-qa-cat-legal" onclick="filterQACategory('legal')" style="padding: 4px 10px; font-size:10px; margin:0; font-family:var(--mono);">🛡️ Legal & Visa</button>
+          <button class="mock-btn mock-btn-outline" id="btn-qa-cat-other" onclick="filterQACategory('other')" style="padding: 4px 10px; font-size:10px; margin:0; font-family:var(--mono);">📂 Others</button>
+        </div>
+      </div>
+
+      <!-- Pending List -->
+      <div class="qa-card" id="qa-list">
+        <p style="color:var(--text-muted)">Checking for unresolved portal questions...</p>
+      </div>
+
+      <!-- Jobs Review List Container -->
+      <div id="jobs-review-list" style="display:none;">
+        <!-- Bulk Controls Panel -->
+        <div style="background:var(--surface2); border:1px solid var(--border); padding:16px; border-radius:8px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+          <div>
+            <h4 style="margin:0; font-size:13px; color:var(--text); font-weight:700;">⚡ Smart Bulk Operations</h4>
+            <p style="margin:2px 0 0 0; font-size:11px; color:var(--text-dim);">Perform bulk actions on all currently queued borderline matches.</p>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:11px; color:var(--text-muted); font-family:var(--mono);">Min Score:</span>
+              <input type="number" id="bulk-min-score" class="input-control" value="65" min="50" max="100" style="width:60px; padding:3px 6px; font-size:11px; margin:0;">
+              <button class="mock-btn" onclick="bulkApprove(true)" style="padding:4px 10px; font-size:11px; margin:0; background:#006622; color:#fff; border-color:#00802b;">🚀 Approve All >= Min Score</button>
+            </div>
+            <div style="height:20px; width:1px; background:var(--border);"></div>
+            <button class="mock-btn" onclick="bulkApprove(false)" style="padding:4px 10px; font-size:11px; margin:0;">⚡ Approve All</button>
+            <button class="mock-btn mock-btn-red" onclick="bulkReject()" style="padding:4px 10px; font-size:11px; margin:0;">❌ Reject All</button>
+          </div>
+        </div>
+        
+        <!-- The actual scrollable list of jobs -->
+        <div class="qa-card" id="jobs-review-sublist" style="max-height: 450px; overflow-y: auto;">
+          <p style="color:var(--text-muted)">Checking for job applications pending review...</p>
+        </div>
+      </div>
+
+      <!-- Library List (All) -->
+      <div class="qa-card" id="qa-all-list" style="display:none; max-height: 450px;">
+        <p style="color:var(--text-muted)">Loading custom knowledge database...</p>
+      </div>
+    </div>
+
+    <!-- RESUME & COVER -->
+    <div class="tab-panel" id="tab-resume">
+
+      <!-- Header -->
+      <div class="mock-header" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(59,130,246,0.06)); border:1px solid rgba(167,139,250,0.2); border-radius:12px; padding:16px 20px;">
+        <div style="display:flex; align-items:center; gap:14px;">
+          <div style="width:42px; height:42px; background:linear-gradient(135deg,#7c3aed,#3b82f6); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:20px; box-shadow:0 4px 12px rgba(124,58,237,0.4);">&#10024;</div>
+          <div>
+            <div class="mock-title" style="background:linear-gradient(90deg,#a78bfa,#60a5fa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; font-size:18px;">Resume &amp; Cover Lab</div>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:3px;">
+              <div style="font-size:11px; color:var(--text-muted);">Powered by Gemini 2.5 Flash</div>
+              <span style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); border-radius:10px; padding:1px 7px; font-size:10px; font-weight:700;">&#9889; PARALLEL CALLS</span>
+              <span style="background:rgba(96,165,250,0.15); color:#60a5fa; border:1px solid rgba(96,165,250,0.3); border-radius:10px; padding:1px 7px; font-size:10px; font-weight:700;">~15s RESPONSE</span>
+            </div>
+          </div>
+        </div>
+        <div id="tailor-spinner" style="display:none; align-items:center; gap:10px; background:rgba(167,139,250,0.1); border:1px solid rgba(167,139,250,0.35); border-radius:10px; padding:10px 16px;">
+          <div style="width:18px;height:18px;border:2.5px solid rgba(167,139,250,0.3);border-top-color:#a78bfa;border-radius:50%;animation:spin 0.8s linear infinite; flex-shrink:0;"></div>
+          <div>
+            <span style="font-size:13px; color:#a78bfa; font-weight:600;" id="tailor-spinner-text">Calling Gemini...</span>
+            <div style="font-size:10px; color:var(--text-muted); margin-top:2px;">Both calls run in parallel for speed</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 1: Master Resume | Job Targeting -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
+
+        <!-- Left: Master Resume editor -->
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase;">&#128196; Master Resume</div>
+            <div style="display:flex; gap:8px;">
+              <button class="action-btn" style="font-size:11px; padding:4px 10px;" onclick="loadMasterResume()">&#8635; Load</button>
+              <button class="action-btn" style="font-size:11px; padding:4px 10px; background:rgba(167,139,250,0.15); border-color:rgba(167,139,250,0.4); color:#a78bfa;" onclick="saveMasterResume()">&#128190; Save</button>
+            </div>
+          </div>
+          <textarea id="master-resume-text"
+            style="flex:1; min-height:320px; background:var(--surface1); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:var(--mono); font-size:11px; line-height:1.6; padding:12px; resize:vertical;"
+            placeholder="Paste your full master resume text here (plain text, ATS-safe)&#10;&#10;PRATIK PAWAR&#10;Senior Data Engineer | 4.6 Years | AWS Snowflake PySpark&#10;&#10;PROFESSIONAL SUMMARY&#10;...&#10;&#10;SKILLS&#10;...&#10;&#10;EXPERIENCE&#10;..."></textarea>
+          <div id="master-resume-status" style="font-size:11px; color:var(--text-muted); min-height:16px;"></div>
+        </div>
+
+        <!-- Right: Job Targeting -->
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:18px; display:flex; flex-direction:column; gap:12px;">
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase;">&#127919; Job Targeting</div>
+
+          <div>
+            <label style="font-size:11px; color:var(--text-muted); margin-bottom:4px; display:block;">Job URL (optional &mdash; auto-fetches JD)</label>
+            <div style="display:flex; gap:8px;">
+              <input type="url" id="tailor-job-url" class="input-control" style="flex:1; font-size:12px;" placeholder="https://jobs.lever.co/company/..." />
+              <button class="action-btn" style="font-size:11px; padding:4px 12px; white-space:nowrap;" onclick="fetchJdFromUrl()">&#8679; Fetch</button>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:10px; color:var(--text-muted); font-size:11px;">
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+            or paste JD below
+            <div style="flex:1; height:1px; background:var(--border);"></div>
+          </div>
+
+          <div>
+            <label style="font-size:11px; color:var(--text-muted); margin-bottom:4px; display:block;">Job Description Text</label>
+            <textarea id="tailor-jd-text"
+              style="width:100%; height:188px; background:var(--surface1); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:var(--mono); font-size:11px; line-height:1.6; padding:10px; resize:vertical; box-sizing:border-box;"
+              placeholder="Paste the full job description here..."></textarea>
+          </div>
+
+          <button id="tailor-btn" onclick="tailorResume()"
+            style="width:100%; padding:12px; border:none; border-radius:8px; cursor:pointer; font-size:14px; font-weight:700; background:linear-gradient(135deg,#7c3aed,#3b82f6); color:#fff; letter-spacing:0.04em; transition:opacity 0.2s,transform 0.1s; box-shadow:0 4px 15px rgba(124,58,237,0.4);"
+            onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'"
+            onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'">
+            &#10024; AI Tailor Resume + Generate Cover Letter
+          </button>
+        </div>
+      </div>
+
+      <!-- Row 2: Keyword Analysis -->
+      <div id="keyword-analysis-row" style="display:none; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:16px; margin-top:12px;">
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+          <div style="min-width:80px; text-align:center;">
+            <div id="match-score-ring" style="width:64px; height:64px; border-radius:50%; border:4px solid #22c55e; display:flex; align-items:center; justify-content:center; margin:0 auto;">
+              <span id="match-score-num" style="font-size:20px; font-weight:800; color:#22c55e;">0%</span>
+            </div>
+            <div style="font-size:10px; color:var(--text-muted); margin-top:4px;">ATS Match</div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:11px; color:#22c55e; margin-bottom:6px; font-weight:600;">&#9989; Keywords Found in Your Resume</div>
+            <div id="keyword-matches-chips" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:11px; color:#f59e0b; margin-bottom:6px; font-weight:600;">&#9888; Missing Keywords (Add to Resume)</div>
+            <div id="keyword-gaps-chips" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Tailored Resume -->
+      <div id="tailored-resume-row" style="display:none; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:18px; margin-top:12px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase;">&#10024; Tailored Resume Sections</div>
+          <button class="action-btn" style="font-size:11px; padding:4px 12px;" onclick="copyTailoredResume()">&#128203; Copy All</button>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div>
+            <div style="font-size:10px; color:#a78bfa; font-weight:700; text-transform:uppercase; margin-bottom:6px;">Professional Summary</div>
+            <div id="tailored-summary" style="background:var(--surface1); border:1px solid var(--border); border-radius:6px; padding:10px; font-size:12px; color:var(--text); line-height:1.7; min-height:60px;"></div>
+          </div>
+          <div>
+            <div style="font-size:10px; color:#60a5fa; font-weight:700; text-transform:uppercase; margin-bottom:6px;">Skills Section (Reordered for JD)</div>
+            <div id="tailored-skills" style="background:var(--surface1); border:1px solid var(--border); border-radius:6px; padding:10px; font-size:12px; color:var(--text); line-height:1.7; min-height:60px;"></div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px; color:#34d399; font-weight:700; text-transform:uppercase; margin-bottom:6px;">Experience Bullets (Tailored)</div>
+          <div id="tailored-bullets" style="background:var(--surface1); border:1px solid var(--border); border-radius:6px; padding:10px; font-size:12px; color:var(--text); line-height:1.9;"></div>
+        </div>
+        <textarea id="tailored-resume-compiled" style="display:none;"></textarea>
+      </div>
+
+      <!-- Row 4: Cover Letter -->
+      <div id="cover-letter-row" style="display:none; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:18px; margin-top:12px; margin-bottom:20px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; color:var(--text-muted); text-transform:uppercase;">&#128221; Tailored Cover Letter</div>
+          <button class="action-btn" style="font-size:11px; padding:4px 12px;" onclick="copyCoverLetter()">&#128203; Copy</button>
+        </div>
+        <textarea id="cover-letter-text"
+          style="width:100%; min-height:180px; background:var(--surface1); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; line-height:1.8; padding:12px; resize:vertical; box-sizing:border-box; font-family:inherit;"></textarea>
+      </div>
+
+      <!-- Error display -->
+      <div id="tailor-error" style="display:none; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:8px; padding:12px 16px; margin-top:12px; color:#f87171; font-size:13px;"></div>
+
+    </div>
+
+    <!-- INTERVIEW PREP -->
+    <div class="tab-panel" id="tab-prep">
+      <div class="mock-header">
+        <div class="mock-title">Interview Prep Generator</div>
+      </div>
+      <p style="font-size:13px; color:var(--text-dim); margin-bottom:16px;">Likely target behavioral and technical questions, formatted to help you frame responses using the STAR method.</p>
+      
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:16px;">
+          <div style="font-size:13px; font-weight:600; color:var(--accent4); margin-bottom:6px;">Q: "Walk me through a time you improved software performance significantly."</div>
+          <div style="font-size:12px; color:var(--text-dim);">→ Suggested STAR approach: Situation (Legacy microservice scaling bottleneck), Task (Optimise SQL/queries & introduce caching), Action (Created indexing indexes, Redis store integration, API payload trimming), Result (40% response reduction, handled 2x traffic load).</div>
+        </div>
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:16px;">
+          <div style="font-size:13px; font-weight:600; color:var(--accent4); margin-bottom:6px;">Q: "How do you handle real-time messaging or queues at scale?"</div>
+          <div style="font-size:12px; color:var(--text-dim);">→ Suggested STAR approach: Reference Redis Bull Queue or Kafka queues, describe backpressure management, decoupling processes, and exponential backoff retry algorithms.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS CONFIGURATIONS SLIDEOVER -->
+    <div id="settings-backdrop" class="slideover-backdrop" onclick="toggleSettings(false)"></div>
+    <div id="settings-slideover" class="slideover">
+      <div class="slideover-header" style="display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0; color:var(--accent); font-size:15px; font-weight:700;">⚙️ Settings Configurations</h3>
+          <button onclick="toggleSettings(false)" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:18px; line-height:1; font-weight:bold;">✕</button>
+        </div>
+        <input type="text" id="settings-search" placeholder="🔍 Search settings..." oninput="filterSettings(this.value)" class="input-control" style="width:100%; margin:0; padding:6px 12px; font-size:12px; background:var(--surface2);">
+      </div>
+      <div class="slideover-body">
+        <!-- AI Resume Parse Drag & Drop Zone -->
+        <div id="resume-parse-container" style="background:rgba(255,255,255,0.03); border:1px dashed rgba(255,255,255,0.15); border-radius:6px; padding:12px; text-align:center; margin-bottom:12px; position:relative; overflow:hidden; transition:all 0.3s ease;">
+          <div id="resume-parse-dropzone" style="cursor:pointer;">
+            <p style="margin:0; font-size:11px; font-weight:600; color:var(--accent2);">✨ Drag & Drop Resume PDF to Auto-Fill Settings</p>
+            <p style="margin:2px 0 0 0; font-size:9px; color:var(--text-muted);">Parses skills, experience, contact details & configures profiles instantly</p>
+            <input type="file" id="resume-parse-input" accept=".pdf" style="position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer;">
+          </div>
+          <!-- Loader Overlay -->
+          <div id="resume-parse-loader" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:var(--surface1); flex-direction:column; justify-content:center; align-items:center; gap:8px; z-index:5;">
+            <div style="width:18px; height:18px; border:2px solid rgba(255,255,255,0.1); border-top-color:var(--accent2); border-radius:50%; animation:spin 1s linear infinite;"></div>
+            <span style="font-size:9px; color:var(--text-muted);">Gemini is structure-parsing your resume...</span>
+          </div>
+        </div>
+
+        <div class="settings-tabs" style="margin-top:0; display:flex; flex-wrap:wrap; gap:4px; margin-bottom:15px;">
+          <button class="settings-tab active" id="btn-settings-personal" onclick="switchSettingsTab('settings-personal')" style="font-size:10px; padding:4px 8px; margin:0;">Credentials</button>
+          <button class="settings-tab" id="btn-settings-skills" onclick="switchSettingsTab('settings-skills')" style="font-size:10px; padding:4px 8px; margin:0;">Skills & Exp</button>
+          <button class="settings-tab" id="btn-settings-targets" onclick="switchSettingsTab('settings-targets')" style="font-size:10px; padding:4px 8px; margin:0;">Targets</button>
+          <button class="settings-tab" id="btn-settings-company-creds" onclick="switchSettingsTab('settings-company-creds')" style="font-size:10px; padding:4px 8px; margin:0;">
+            Company Creds
+            <span id="company-creds-alert-badge" style="display:none; width: 6px; height: 6px; background-color: #ff3b30; border-radius: 50%; margin-left: 4px; box-shadow: 0 0 6px #ff3b30; display: inline-block; animation: pulse 1.5s infinite;"></span>
+          </button>
+          <button class="settings-tab" id="btn-settings-cover" onclick="switchSettingsTab('settings-cover')" style="font-size:10px; padding:4px 8px; margin:0;">Cover Letter</button>
+          <button class="settings-tab" id="btn-settings-notifications" onclick="switchSettingsTab('settings-notifications')" style="font-size:10px; padding:4px 8px; margin:0;">🔔 Alerts</button>
+          <button class="settings-tab" id="btn-settings-workday" onclick="switchSettingsTab('settings-workday')" style="font-size:10px; padding:4px 8px; margin:0;">&#127760; Workday</button>
+        </div>
+      
+      <div id="settings-personal" class="settings-content active">
+        <div class="config-grid">
+          <div class="input-group">
+            <label>First Name</label>
+            <input type="text" id="cfg-first_name" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Last Name</label>
+            <input type="text" id="cfg-last_name" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Email</label>
+            <input type="email" id="cfg-email" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Phone</label>
+            <input type="text" id="cfg-phone" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>City</label>
+            <input type="text" id="cfg-city" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>LinkedIn Email</label>
+            <input type="email" id="cfg-linkedin_email" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>LinkedIn Password</label>
+            <input type="password" id="cfg-linkedin_password" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Naukri Email</label>
+            <input type="email" id="cfg-naukri_email" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Naukri Password</label>
+            <input type="password" id="cfg-naukri_password" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Corporate/Workday Email</label>
+            <input type="email" id="cfg-corp_email" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Corporate/Workday Password</label>
+            <input type="password" id="cfg-corp_password" class="input-control">
+          </div>
+          <div class="input-group full-width" style="margin-top:15px;">
+            <label style="color:var(--accent); font-weight:700;">Google Gemini API Key (Optional - Enables Smart AI Q&A Solver)</label>
+            <input type="text" id="cfg-gemini_api_key" class="input-control" placeholder="Enter your free Gemini API Key (AIzaSy...)">
+          </div>
+          <div class="input-group">
+            <label style="color:var(--accent2); font-weight:700;">IMAP Email Host</label>
+            <input type="text" id="cfg-imap_host" class="input-control" placeholder="imap.gmail.com">
+          </div>
+          <div class="input-group">
+            <label style="color:var(--accent2); font-weight:700;">IMAP Email Address</label>
+            <input type="email" id="cfg-imap_email" class="input-control" placeholder="yourname@gmail.com">
+          </div>
+          <div class="input-group">
+            <label style="color:var(--accent2); font-weight:700;">IMAP App Password</label>
+            <input type="password" id="cfg-imap_password" class="input-control" placeholder="App password from Google settings">
+          </div>
+        </div>
+      </div>
+      
+      <div id="settings-skills" class="settings-content">
+        <div class="config-grid">
+          <div class="input-group">
+            <label>Total Experience (Years)</label>
+            <input type="number" id="cfg-total_experience_years" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Current CTC (LPA)</label>
+            <input type="number" id="cfg-current_ctc" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Expected CTC (LPA)</label>
+            <input type="number" id="cfg-expected_ctc" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Notice Period (Days)</label>
+            <input type="number" id="cfg-notice_period" class="input-control">
+          </div>
+          <div class="input-group full-width">
+            <label>Resume Path (PDF file path on your PC)</label>
+            <input type="text" id="cfg-resume_path" class="input-control">
+          </div>
+          <div class="input-group full-width">
+            <label>Skills (comma separated, e.g. SQL, Python, Spark)</label>
+            <input type="text" id="cfg-my_skills" class="input-control">
+          </div>
+          <div class="input-group full-width" style="margin-top: 1.5rem;">
+            <label style="font-weight: 700; color: var(--accent2);">Tech-Specific Experience (Years)</label>
+            <div id="tech-exp-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:12px; margin-top:10px; margin-bottom:16px;">
+              <!-- Loaded via JS -->
+            </div>
+            <div style="display:flex; gap:10px; max-width:480px; align-items:center;">
+              <input type="text" id="new-tech-name" placeholder="Tech Name (e.g. Snowflake)" class="input-control" style="flex:2; padding:6px 10px; font-size:13px; margin:0;" />
+              <input type="number" id="new-tech-years" placeholder="Years" class="input-control" style="flex:1; padding:6px 10px; font-size:13px; margin:0;" min="0" />
+              <button class="mock-btn" type="button" onclick="addNewTechExp()" style="padding:6px 12px; font-size:13px; margin:0; background:var(--accent2); color:white; border:none; border-radius:4px; cursor:pointer;">Add</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="settings-targets" class="settings-content">
+        <div class="config-grid">
+          <div class="input-group full-width">
+            <label>Search Job Keywords (comma separated)</label>
+            <input type="text" id="cfg-search_keywords" class="input-control">
+          </div>
+          <div class="input-group full-width">
+            <label>Search Job Locations (comma separated)</label>
+            <input type="text" id="cfg-search_locations" class="input-control">
+          </div>
+          <div class="input-group full-width">
+            <label>Target Companies Filter (comma separated)</label>
+            <input type="text" id="cfg-target_companies" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Minimum Match Score Floor</label>
+            <input type="number" id="cfg-min_match_score" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Daily Application Limit</label>
+            <input type="number" id="cfg-daily_limit" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Auto-Apply Score Threshold (e.g. 75)</label>
+            <input type="number" id="cfg-auto_threshold" class="input-control">
+          </div>
+          <div class="input-group">
+            <label>Review Queue Score Threshold (e.g. 55)</label>
+            <input type="number" id="cfg-review_threshold" class="input-control">
+          </div>
+        </div>
+      </div>
+      
+      <div id="settings-company-creds" class="settings-content">
+        <p style="font-size:12px; color:var(--text-dim); margin-bottom:15px;">Configure custom login details for specific target companies. The bot will automatically retrieve and apply these credentials on external portals.</p>
+        
+        <div style="background:var(--surface2); padding:24px; border:1px solid var(--border); border-radius:10px; margin-bottom:20px;">
+          <h4 style="margin:0 0 12px 0; color:var(--accent); font-size:13px;">Add New Company Credential</h4>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:12px; align-items:flex-end; flex-wrap:wrap;">
+            <div class="input-group" style="margin:0; flex:1; min-width:150px;">
+              <label style="font-size:11px; margin-bottom:4px;">Company Name (e.g. Accenture)</label>
+              <input type="text" id="add-company-name" class="input-control" placeholder="Accenture" style="padding:6px 10px; font-size:12px; margin:0; height:auto;">
+            </div>
+            <div class="input-group" style="margin:0; flex:1; min-width:150px;">
+              <label style="font-size:11px; margin-bottom:4px;">Email / Username</label>
+              <input type="email" id="add-company-email" class="input-control" placeholder="yourname@corp.com" style="padding:6px 10px; font-size:12px; margin:0; height:auto;">
+            </div>
+            <div class="input-group" style="margin:0; flex:1; min-width:150px;">
+              <label style="font-size:11px; margin-bottom:4px;">Password</label>
+              <input type="password" id="add-company-password" class="input-control" placeholder="••••••••" style="padding:6px 10px; font-size:12px; margin:0; height:auto;">
+            </div>
+            <button class="mock-btn" style="padding:7px 18px; font-size:12px; margin:0; height:auto;" onclick="addCompanyCredential()">Add</button>
+          </div>
+        </div>
+
+        <div class="table-wrap" style="max-height: 250px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Username/Email</th>
+                <th>Password</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="company-creds-tbody">
+              <!-- Dynamically rendered custom company credentials -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div id="settings-cover" class="settings-content">
+        <div class="input-group full-width">
+          <label>Cover Letter Template</label>
+          <textarea id="cfg-cover_letter" class="input-control" style="min-height:150px; font-family:var(--mono);"></textarea>
+        </div>
+      </div>
+
+      <!-- Workday Portals Panel (Phase 6) -->
+      <div id="settings-workday" class="settings-content">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+
+          <!-- Left: Auto-Register New Portal -->
+          <div>
+            <div style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:14px;">&#9881; Auto-Register New Workday Portal</div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div>
+                <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Portal URL</label>
+                <input type="url" id="wd-portal-url" class="input-control" placeholder="https://company.wd5.myworkdayjobs.com/..." style="width:100%; box-sizing:border-box;" />
+              </div>
+              <div>
+                <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Portal Name (label for saving credentials)</label>
+                <input type="text" id="wd-portal-name" class="input-control" placeholder="Accenture, Deloitte, TCS..." style="width:100%; box-sizing:border-box;" />
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <div>
+                  <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Email to use</label>
+                  <input type="email" id="wd-email" class="input-control" placeholder="your@email.com" style="width:100%; box-sizing:border-box;" />
+                </div>
+                <div>
+                  <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Password</label>
+                  <input type="password" id="wd-password" class="input-control" style="width:100%; box-sizing:border-box;" />
+                </div>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px;">
+                <button onclick="wdSaveManual()" class="action-btn" style="padding:9px; font-size:12px; font-weight:600;">
+                  &#128190; Save Credentials
+                </button>
+                <button onclick="wdAutoRegister()" id="wd-register-btn"
+                  style="padding:9px; border:none; border-radius:7px; cursor:pointer; font-size:12px; font-weight:700;
+                         background:linear-gradient(135deg,#7c3aed,#3b82f6); color:#fff;
+                         transition:opacity 0.2s; box-shadow:0 3px 10px rgba(124,58,237,0.4);"
+                  onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+                  &#127760; Launch Auto-Register
+                </button>
+              </div>
+              <div id="wd-status-panel" style="display:none; background:var(--surface1); border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:4px;">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                  <div id="wd-status-dot" style="width:8px; height:8px; border-radius:50%; background:#f59e0b; animation:pulse 1.5s infinite;"></div>
+                  <span id="wd-status-phase" style="font-size:12px; color:var(--text); font-weight:600;">Starting...</span>
+                </div>
+                <div id="wd-log-box" style="font-family:var(--mono); font-size:10px; color:var(--text-dim); max-height:140px; overflow-y:auto; line-height:1.7;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Saved Portals List -->
+          <div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+              <div style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em;">&#128274; Saved Portals</div>
+              <button class="action-btn" style="font-size:11px; padding:4px 10px;" onclick="wdLoadPortals()">&#8635; Refresh</button>
+            </div>
+            <div id="wd-portals-list" style="display:flex; flex-direction:column; gap:8px; max-height:270px; overflow-y:auto;">
+              <div style="color:var(--text-muted); font-size:12px; padding:8px;">Click Refresh to load...</div>
+            </div>
+            <div style="margin-top:12px; padding:12px; background:rgba(167,139,250,0.08); border:1px solid rgba(167,139,250,0.2); border-radius:8px;">
+              <div style="font-size:11px; color:#a78bfa; font-weight:700; margin-bottom:6px;">&#8505; How Auto-Register Works</div>
+              <div style="font-size:11px; color:var(--text-dim); line-height:1.9;">
+                1. Enter Workday portal URL + a name label<br>
+                2. Click <b>Launch Auto-Register</b> &#8594; browser opens<br>
+                3. Bot detects login vs registration form<br>
+                4. Auto-fills email, password, first/last name<br>
+                5. Handles OTP emails via Gmail IMAP if needed<br>
+                6. Credentials auto-saved to profile.py
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alerts & Notifications tab (Task 3 & 4) -->
+      <div id="settings-notifications" class="settings-content">
+        <h4 style="margin-top:0; color:var(--accent); font-size:13px; margin-bottom:12px;">Push Alerts & Notifications</h4>
+        <p style="font-size:11px; color:var(--text-muted); margin-bottom:15px;">Enable instant notifications when jobs are applied to, review queue items are added, or when manual Q&A resolution is needed.</p>
+        
+        <div class="input-group">
+          <label>Notification Channels</label>
+          <div style="display:flex; gap:15px; margin-top:8px;">
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; color:var(--text-dim);">
+              <input type="checkbox" id="cfg-notif-email" value="email"> Email Alerts (Gmail)
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; color:var(--text-dim);">
+              <input type="checkbox" id="cfg-notif-telegram" value="telegram"> Telegram Bot Messages
+            </label>
+          </div>
+        </div>
+        
+        <div style="border-top:1px solid var(--border); margin:15px 0;"></div>
+        
+        <div id="telegram-config-section">
+          <h5 style="margin:0 0 8px 0; color:var(--text); font-size:12px;">Telegram Bot Configuration</h5>
+          <div class="input-group">
+            <label>Telegram Bot Token</label>
+            <input type="text" id="cfg-telegram_bot_token" class="input-control" placeholder="123456789:ABCdefGhIJKlmNoPQRsT..." style="font-size:12px;">
+          </div>
+          <div class="input-group">
+            <label>Telegram Chat ID</label>
+            <input type="text" id="cfg-telegram_chat_id" class="input-control" placeholder="987654321" style="font-size:12px;">
+          </div>
+          <p style="font-size:10px; color:var(--text-muted); line-height:1.5; margin-top:8px;">
+            💡 <strong>Setup Guide</strong>:<br>
+            1. Search for <strong>@BotFather</strong> on Telegram and create a new bot.<br>
+            2. Paste the bot token above.<br>
+            3. Search for <strong>@userinfobot</strong> on Telegram to find your Chat ID, and paste it above.<br>
+            4. Start a chat with your bot (click <code>/start</code>) before testing.
+          </p>
+        </div>
+      </div>
+      
+    </div> <!-- Close .slideover-body -->
+
+    <div class="slideover-footer">
+      <button class="mock-btn mock-btn-outline" onclick="toggleSettings(false)" style="margin:0;">Cancel</button>
+      <button class="mock-btn" onclick="saveProfileSettings()" style="margin:0;">💾 Save Settings</button>
+    </div>
+  </div> <!-- Close #settings-slideover -->
+
+    <!-- FUNNEL ANALYTICS & CALLBACK TRACKER -->
+    <div class="tab-panel" id="tab-analytics">
+      <div class="mock-header">
+        <div class="mock-title">Application Funnel & Callback Tracker</div>
+      </div>
+      <p style="font-size:13px; color:var(--text-dim); margin-bottom:20px;">
+        Monitor the real-time application conversion funnel and manually update callback progression stages to keep your job search metrics accurate.
+      </p>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; margin-bottom:32px;">
+        <!-- Funnel Visualization Card -->
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:20px;">
+          <h3 style="margin-top:0; margin-bottom:16px; font-size:16px; color:var(--accent);">Conversion Funnel</h3>
+          <div style="height:280px; position:relative;">
+            <canvas id="funnelChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Conversion Metrics Card -->
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:20px; display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <h3 style="margin-top:0; margin-bottom:16px; font-size:16px; color:var(--accent3);">Key Funnel Metrics</h3>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+              <div style="background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:6px; text-align:center;">
+                <div style="font-size:20px; font-weight:700; color:#fff;" id="metrics-scanned">0</div>
+                <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-top:4px;">Total Scanned</div>
+              </div>
+              <div style="background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:6px; text-align:center;">
+                <div style="font-size:20px; font-weight:700; color:var(--accent);" id="metrics-applied">0</div>
+                <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-top:4px;">Applied</div>
+              </div>
+              <div style="background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:6px; text-align:center;">
+                <div style="font-size:20px; font-weight:700; color:var(--accent4);" id="metrics-interviews">0</div>
+                <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-top:4px;">Interviews</div>
+              </div>
+              <div style="background:var(--surface); border:1px solid var(--border); padding:12px; border-radius:6px; text-align:center;">
+                <div style="font-size:20px; font-weight:700; color:#4ade80;" id="metrics-offers">0</div>
+                <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-top:4px;">Offers Received</div>
+              </div>
+            </div>
+          </div>
+          <div style="border-top:1px solid var(--border); padding-top:16px; margin-top:16px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+              <span style="color:var(--text-dim);">Application Rate (Applied / Scanned):</span>
+              <span style="font-weight:600; color:var(--accent);" id="metrics-app-rate">0%</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:12px;">
+              <span style="color:var(--text-dim);">Interview Callback Rate (Interview / Applied):</span>
+              <span style="font-weight:600; color:var(--accent4);" id="metrics-callback-rate">0%</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px;">
+              <span style="color:var(--text-dim);">Offer Success Rate (Offer / Interview):</span>
+              <span style="font-weight:600; color:#4ade80;" id="metrics-offer-rate">0%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Callback Tracker Table -->
+      <div style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:20px;">
+        <h3 style="margin-top:0; margin-bottom:16px; font-size:16px; color:var(--accent2);">Callback Tracker & Stage Editor</h3>
+        <div style="overflow-x:auto;">
+          <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border); text-align:left;">
+                <th style="padding:10px 8px; color:var(--text-muted);">Company</th>
+                <th style="padding:10px 8px; color:var(--text-muted);">Role</th>
+                <th style="padding:10px 8px; color:var(--text-muted);">Portal</th>
+                <th style="padding:10px 8px; color:var(--text-muted);">Match %</th>
+                <th style="padding:10px 8px; color:var(--text-muted);">Date Logged</th>
+                <th style="padding:10px 8px; color:var(--text-muted);">Current Stage</th>
+                <th style="padding:10px 8px; color:var(--text-muted);">Outreach</th>
+              </tr>
+            </thead>
+            <tbody id="analytics-tbody">
+              <!-- Dynamically populated rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT IT DOES -->
+<section>
+  <div class="section-label">Core Concept</div>
+  <h2>What the bot actually does —<br>the honest picture</h2>
+
+  <div class="pipeline">
+    <div class="pipe-step">
+      <div class="pipe-arrow"></div>
+      <div class="pipe-num">01</div>
+      <div class="pipe-title">Watch Portals 24/7</div>
+      <p class="pipe-desc">Continuously polls LinkedIn, Naukri, Indeed, Glassdoor and company ATS via API or Playwright.</p>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-arrow"></div>
+      <div class="pipe-num">02</div>
+      <div class="pipe-title">Score & Filter</div>
+      <p class="pipe-desc">Two-stage AI engine: fast embedding similarity → deep LLM score (0–100) with justification.</p>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-arrow"></div>
+      <div class="pipe-num">03</div>
+      <div class="pipe-title">Decide: Auto / Review / Skip</div>
+      <p class="pipe-desc">Score ≥75 → auto-apply. 55–75 → human queue. &lt;55 → silently skipped.</p>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-arrow"></div>
+      <div class="pipe-num">04</div>
+      <div class="pipe-title">Tailor Resume + Cover</div>
+      <p class="pipe-desc">AI rewrites summary, reorders bullets, injects keywords, writes 3-para cover letter per role.</p>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-arrow"></div>
+      <div class="pipe-num">05</div>
+      <div class="pipe-title">Submit Application</div>
+      <p class="pipe-desc">API submit or Playwright-driven form fill. Bespoke parsers per ATS (Workday, Greenhouse, etc).</p>
+    </div>
+    <div class="pipe-step">
+      <div class="pipe-num">06</div>
+      <div class="pipe-title">Track & Advance FSM</div>
+      <p class="pipe-desc">Monitors email (IMAP) + portal APIs. Automatically moves state: Applied → Viewed → Interview…</p>
+    </div>
+  </div>
+
+  <p style="font-size:14px; color: var(--text-dim); max-width: 720px;">The candidate wakes up to a prioritised to-do list instead of a firehose of listings. The cognitive load collapses from "spend evenings scrolling Naukri" to "review 8 flagged jobs and prepare for the 3 interviews the bot already booked."</p>
+</section>
+
+<!-- SCORING ENGINE -->
+<section>
+  <div class="section-label">Intelligence Layer</div>
+  <h2>The AI Scoring Engine —<br>how the bot decides</h2>
+
+  <div class="score-diagram">
+    <div class="score-box">
+      <h3 style="color: var(--accent2); margin-bottom: 16px;">Stage 1 — Fast Filter</h3>
+      <p style="font-size:13px;">Embedding cosine similarity using <strong style="color:#fff">OpenAI ada-002</strong> or equivalent. Processes hundreds of listings in milliseconds. Drops obvious mismatches before the expensive LLM call.</p>
+      <div style="margin-top:16px; font-family: var(--mono); font-size:11px; color: var(--text-muted); background: var(--surface2); padding:12px; border-radius:6px;">
+        score = cosine(embed(JD), embed(resume))<br>
+        threshold: &gt; 0.65 → proceed to Stage 2
+      </div>
+    </div>
+    <div class="score-connector">
+      <span class="arr">→</span>
+      <span>then</span>
+    </div>
+    <div class="score-box">
+      <h3 style="color: var(--accent4); margin-bottom: 16px;">Stage 2 — Deep Score</h3>
+      <p style="font-size:13px;">Full LLM prompt reads the complete JD + candidate profile. Returns structured JSON: <strong style="color:#fff">0–100 score</strong>, missing skills, matched skills, and a human-readable justification shown in the dashboard.</p>
+      <div style="margin-top:16px; font-family: var(--mono); font-size:11px; color: var(--text-muted); background: var(--surface2); padding:12px; border-radius:6px;">
+        {"score": 82, "match": ["React","Node"],<br>
+        "gap": ["Kubernetes"],<br>
+        "reason": "Strong fit, missing infra exp"}
+      </div>
+    </div>
+  </div>
+
+  <h3 style="color:#fff; margin-bottom: 16px;">Threshold Logic — tuneable per candidate</h3>
+  <div class="threshold-row">
+    <div class="threshold-item t-green">
+      <div class="t-badge">≥ 75</div>
+      <div>
+        <div class="t-action">Auto-Apply immediately</div>
+        <p class="t-sub">Bot submits, tailors resume, writes cover letter — no human needed</p>
+      </div>
+    </div>
+    <div class="threshold-item t-yellow">
+      <div class="t-badge">55–74</div>
+      <div>
+        <div class="t-action">Send to Human Review Queue</div>
+        <p class="t-sub">Candidate sees it in dashboard with score + justification — 1-click approve</p>
+      </div>
+    </div>
+    <div class="threshold-item t-red">
+      <div class="t-badge">&lt; 55</div>
+      <div>
+        <div class="t-action">Silently Skip</div>
+        <p class="t-sub">Not shown to candidate. Logged only. Can be reviewed in archive tab.</p>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:12px; color: var(--text-muted); margin-top:16px;">⚙ A recently laid-off candidate set at 60 threshold. A passive job seeker still employed — raise to 85. Thresholds are per-profile settings.</p>
+</section>
+
+<!-- PORTAL CONNECTIONS -->
+<section>
+  <div class="section-label">Portal Layer</div>
+  <h2>How portal connections work</h2>
+  <p style="max-width:640px; margin-bottom:32px;">Every portal connector exposes exactly two methods: <code style="font-family:var(--mono); color:var(--accent); font-size:12px;">search(keywords, filters) → [JobListing]</code> and <code style="font-family:var(--mono); color:var(--accent); font-size:12px;">apply(job_id, profile) → ApplicationResult</code>. The scoring engine above never sees Playwright or API keys. This abstraction is what makes the system maintainable.</p>
+
+  <div class="portal-grid">
+    <div class="portal-card pc-linkedin">
+      <div class="portal-name">LinkedIn</div>
+      <span class="portal-method method-api">Official API</span> <span class="portal-method method-playwright">Playwright (Easy Apply)</span>
+      <p class="portal-note">Job search via official API. Easy Apply requires browser automation — LinkedIn deliberately blocks this. Needs realistic timing + per-candidate proxy IPs.</p>
+    </div>
+    <div class="portal-card pc-naukri">
+      <div class="portal-name">Naukri</div>
+      <span class="portal-method method-partner">Partner API</span>
+      <p class="portal-note">Has a partner API for job search. Apply flow is partially API-driven. More predictable than LinkedIn. Good for Indian market targeting.</p>
+    </div>
+    <div class="portal-card pc-indeed">
+      <div class="portal-name">Indeed</div>
+      <span class="portal-method method-api">Publisher API</span> <span class="portal-method method-api">Apply API</span>
+      <p class="portal-note">Separate publisher (search) and Apply APIs. Most reliable portal to integrate. Rate limits are generous for registered publishers.</p>
+    </div>
+    <div class="portal-card pc-glass">
+      <div class="portal-name">Glassdoor</div>
+      <span class="portal-method method-scrape">Scraping Only</span>
+      <p class="portal-note">No public API. Requires Playwright. Glassdoor has aggressive bot detection — use stealth plugins, human-delay randomisation, and session cookie reuse.</p>
+    </div>
+    <div class="portal-card pc-ats">
+      <div class="portal-name">Company ATS — Workday, Greenhouse, Lever, iCIMS, Taleo, SuccessFactors, SmartRecruiters</div>
+      <span class="portal-method method-playwright">Selenium + AI</span>
+      <p class="portal-note">7 ATS platforms supported. Universal multi-page form filler handles login/register walls, OTP email verification, dropdowns, radio buttons, checkboxes, cover letters, and unknown fields via Gemini AI resolver. Self-healing on validation errors.</p>
+    </div>
+  </div>
+</section>
+
+<!-- RESUME TAILORING -->
+<section>
+  <div class="section-label">AI Resume Engine</div>
+  <h2>Resume tailoring — the feature<br>candidates love most</h2>
+  <p style="max-width:640px; margin-bottom: 28px;">The bot never fires the same PDF twice. For every auto-apply, the AI generates a tailored version of the resume tuned to that specific job description — typically raising response rates by 15–25% over a static resume blast.</p>
+
+  <div class="diff-view">
+    <div class="diff-pane">
+      <div class="diff-label before">❌ Before — Static Resume</div>
+      <div class="diff-text">
+        "Experienced software developer with <span class="removed">5+ years</span> of experience in various technologies. Worked on multiple projects involving <span class="removed">frontend and backend development</span>. Familiar with agile methodologies."
+        <br><br>
+        <strong style="color:#fff; font-size:11px;">Bullet order:</strong><br>
+        <span class="removed">• Built internal CMS tool</span><br>
+        • Led React migration<br>
+        • Optimized Node.js APIs<br>
+        • Managed AWS infra
+      </div>
+    </div>
+    <div class="diff-pane">
+      <div class="diff-label after">✓ After — AI Tailored for "Senior React Engineer at Fintech"</div>
+      <div class="diff-text">
+        "Senior frontend engineer specializing in <span class="hl">React</span> and <span class="hl">TypeScript</span> for <span class="hl">fintech</span> products. Built high-performance UIs handling <span class="hl">real-time data</span> and <span class="hl">regulatory compliance</span> constraints."
+        <br><br>
+        <strong style="color:#fff; font-size:11px;">Bullet order (reranked):</strong><br>
+        <span class="hl">• Led React migration → 40% perf gain</span><br>
+        <span class="hl">• Optimized Node.js APIs for 99.9% SLA</span><br>
+        • Managed AWS infra<br>
+        <span style="color: var(--text-muted); font-size:11px;">↑ CMS bullet suppressed — irrelevant</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:24px; display:flex; gap:16px; flex-wrap:wrap;">
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px 20px; flex:1; min-width:200px;">
+      <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px;">What AI rewrites</div>
+      <div style="font-size:12px; color:var(--text-dim); line-height:1.8;">
+        ✓ Resume summary / headline<br>
+        ✓ Bullet point order (top 3 most relevant first)<br>
+        ✓ ATS keyword injection from JD<br>
+        ✓ 3-paragraph cover letter with company name + role context<br>
+        ✓ Output: ATS-safe single-column PDF (no tables, no columns)
+      </div>
+    </div>
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:16px 20px; flex:1; min-width:200px;">
+      <div style="font-family:var(--mono); font-size:10px; color:var(--text-muted); text-transform:uppercase; margin-bottom:6px;">ATS-safe output rules</div>
+      <div style="font-size:12px; color:var(--text-dim); line-height:1.8;">
+        ✓ Single-column layout only<br>
+        ✓ No tables, no text boxes<br>
+        ✓ Standard section headers<br>
+        ✓ Machine-readable fonts (Arial, Calibri)<br>
+        ✓ Passes Affinda + Sovren parsers
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- APPLICATION TRACKING -->
+<section>
+  <div class="section-label">Tracking Layer</div>
+  <h2>Application state machine —<br>where most bots fail</h2>
+  <p style="max-width:640px; margin-bottom:24px;">Status tracking is what separates a toy from a tool. Every application has its own finite state machine. The bot advances state automatically using email triggers (IMAP regex on subject lines) and portal status APIs where available.</p>
+
+  <div class="fsm">
+    <div class="fsm-state s-applied">Applied</div>
+    <div class="fsm-arrow">→</div>
+    <div class="fsm-state s-viewed">Viewed</div>
+    <div class="fsm-arrow">→</div>
+    <div class="fsm-state s-short">Shortlisted</div>
+    <div class="fsm-arrow">→</div>
+    <div class="fsm-state s-interview">Interview</div>
+    <div class="fsm-arrow">→</div>
+    <div class="fsm-state s-offer">Offer 🎉</div>
+    <div class="fsm-arrow">/</div>
+    <div class="fsm-state s-rej">Rejected</div>
+    <div class="fsm-arrow">/</div>
+    <div class="fsm-state s-ghost">Ghosted</div>
+  </div>
+
+  <p style="font-size:13px; color:var(--text-dim); max-width:640px;">Email monitoring watches for subject line patterns like "interview invitation," "application viewed," "regret to inform" using regex. "Ghosted" state triggers automatically after 21 days with no response — no manual cleanup needed.</p>
+</section>
+
+<!-- HARD PROBLEMS -->
+<section>
+  <div class="section-label">Engineering Challenges</div>
+  <h2>The hardest problems, ranked</h2>
+
+  <div class="problems-grid">
+    <div class="prob-card">
+      <div class="prob-rank">1</div>
+      <h3 style="color:var(--accent3);">Portal Anti-Scraping</h3>
+      <p style="font-size:13px;">LinkedIn, Naukri, and Indeed all have bot detection. Standard Playwright fingerprints get blocked within hours.</p>
+      <div class="prob-solve">
+        <span class="s-label">How to solve</span>
+        Realistic human timing randomisation in Playwright. Session cookie reuse (don't re-login every run). Per-candidate proxy IPs (not shared). Rate limiter that respects each portal's implicit limits. Use stealth plugins (puppeteer-extra-plugin-stealth).
+      </div>
+    </div>
+    <div class="prob-card">
+      <div class="prob-rank">2</div>
+      <h3 style="color:var(--accent4);">ATS Form Parsing</h3>
+      <p style="font-size:13px;">Workday alone has 12+ layout variants in the wild. Greenhouse, Lever, iCIMS all differ. These forms break without warning on portal updates.</p>
+      <div class="prob-solve">
+        <span class="s-label">How to solve</span>
+        Build a parser per ATS variant. Store selectors in config (not hardcoded). Run a daily smoke-test job that tries a known form and alerts on failure. Accept that this will need ongoing maintenance — budget 20% of dev time for it.
+      </div>
+    </div>
+    <div class="prob-card">
+      <div class="prob-rank">3</div>
+      <h3 style="color:var(--accent2);">ATS-safe PDF Generation</h3>
+      <p style="font-size:13px;">Fancy two-column resumes with tables and text boxes fail Affinda and Sovren parsers. Skills get scrambled, name gets placed wrong.</p>
+      <div class="prob-solve">
+        <span class="s-label">How to solve</span>
+        Single-column layout only. No tables, no text boxes. Standard section headers only. Machine-readable fonts (Arial, Calibri). Use a PDF library that produces clean linearised output — test every template against Affinda before shipping.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TECH STACK -->
+<section>
+  <div class="section-label">Tech Stack</div>
+  <h2>What you actually build with</h2>
+
+  <div class="stack-grid">
+    <div class="stack-card">
+      <div class="stack-layer">Backend / Core</div>
+      <div class="stack-items">
+        <span class="stack-tag">Node.js</span>
+        <span class="stack-tag">Python (FastAPI)</span>
+        <span class="stack-tag">Bull (job queue)</span>
+        <span class="stack-tag">Redis</span>
+      </div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">AI / Scoring</div>
+      <div class="stack-items">
+        <span class="stack-tag">OpenAI ada-002</span>
+        <span class="stack-tag">GPT-4o / Claude</span>
+        <span class="stack-tag">Pinecone / pgvector</span>
+      </div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Browser Automation</div>
+      <div class="stack-items">
+        <span class="stack-tag">Playwright</span>
+        <span class="stack-tag">stealth plugin</span>
+        <span class="stack-tag">BrowserBase / Proxies</span>
+      </div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Database</div>
+      <div class="stack-items">
+        <span class="stack-tag">PostgreSQL</span>
+        <span class="stack-tag">Supabase</span>
+        <span class="stack-tag">pgvector</span>
+      </div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Email Monitoring</div>
+      <div class="stack-items">
+        <span class="stack-tag">IMAP (node-imap)</span>
+        <span class="stack-tag">Gmail API</span>
+        <span class="stack-tag">Regex FSM triggers</span>
+      </div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">PDF Generation</div>
+      <div class="stack-items">
+        <span class="stack-tag">Puppeteer PDF</span>
+        <span class="stack-tag">PDFKit</span>
+        <span class="stack-tag">Affinda (ATS test)</span>
+      </div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Frontend Dashboard</div>
+      <div class="stack-items">
+        <span class="stack-tag">React</span>
+        <span class="stack-tag">Tailwind</span>
+        <span class="stack-tag">React Query</span>
+        <span class="stack-tag">Recharts</span>
+      </div>
+    </div>
+    <div class="stack-card">
+      <div class="stack-layer">Auth / Licensing</div>
+      <div class="stack-items">
+        <span class="stack-tag">Supabase Auth</span>
+        <span class="stack-tag">Edge Functions</span>
+        <span class="stack-tag">License keys</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- IMPLEMENTATION PLAN -->
+<section>
+  <div class="section-label">16-Week Implementation Plan</div>
+  <h2>Build order — the right way,<br>not the fast way</h2>
+  <p style="max-width:640px; margin-bottom:40px; font-size:14px; color:var(--text-dim);">Do <strong style="color:#fff">not</strong> start with the auto-apply engine. Start with the tracking dashboard and manual apply flow. Automation built on a broken UX buries problems. Get 5 beta users applying manually first, watch where they struggle, fix it, then turn on automation.</p>
+
+  <div class="timeline">
+    <div class="tl-phase tl-p1">
+      <div class="tl-dot"></div>
+      <div class="tl-weeks">Weeks 1–4</div>
+      <div class="tl-title">Foundation — Data Model + Manual Flow</div>
+      <p style="font-size:13px; color:var(--text-dim); max-width:600px;">Build the dashboard and manual apply flow first. Validate the data model before automating anything. This is what 30 years teaches you — automation built on wrong data model = months of rework.</p>
+      <div class="tl-items">
+        <span class="tl-item">DB schema (applications, jobs, candidates, FSM)</span>
+        <span class="tl-item">Candidate profile + resume parser</span>
+        <span class="tl-item">Job Feed UI (manual search)</span>
+        <span class="tl-item">Kanban tracker (manual state)</span>
+        <span class="tl-item">Email connection (IMAP)</span>
+        <span class="tl-item">5 beta users, manual apply</span>
+      </div>
+    </div>
+
+    <div class="tl-phase tl-p2">
+      <div class="tl-dot"></div>
+      <div class="tl-weeks">Weeks 5–9</div>
+      <div class="tl-title">Intelligence Layer — AI Scoring + Resume Engine</div>
+      <p style="font-size:13px; color:var(--text-dim); max-width:600px;">Add AI only after the UI is validated. Build the two-stage scorer, resume tailoring, and cover letter generator. Tune threshold</p>
+      <div class="tl-items">
+        <span class="tl-item">Embedding cosine matching</span>
+        <span class="tl-item">LLM detailed match report</span>
+        <span class="tl-item">ATS profile keyword injection</span>
+        <span class="tl-item">Linear PDF format exporter</span>
+        <span class="tl-item">STAR question mock builder</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<div class="footer">
+  🤖 SENIOR ENGINEER BLUEPRINT DASHBOARD © 2026. RUNNING WITH MAXIMUM EFFICIENCY.
+</div>
+
+<!-- Slide-Over Outreach Panel -->
+<div id="outreach-backdrop" class="slideover-backdrop" onclick="toggleOutreach(false)"></div>
+<div id="outreach-slideover" class="slideover">
+    <div class="slideover-header" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+            <h2 style="margin:0; font-size:18px; color:var(--accent2); font-family:'Outfit', sans-serif;">Draft Recruiter Outreach</h2>
+            <p id="outreach-subtitle" style="margin:4px 0 0 0; font-size:12px; color:var(--text-muted); font-family:'Inter', sans-serif;">Company — Role</p>
+        </div>
+        <button onclick="toggleOutreach(false)" style="background:none; border:none; color:var(--text-muted); font-size:24px; cursor:pointer;">&times;</button>
+    </div>
+    <div class="slideover-body" style="display:flex; flex-direction:column; gap:16px;">
+        <div id="outreach-loader" style="display:none; text-align:center; padding:40px 0;">
+            <div style="width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--accent2); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px auto;"></div>
+            <p style="color:var(--text-muted); font-size:13px; font-family:'Inter', sans-serif;">Generating personalized outreach message using Gemini...</p>
+        </div>
+        <div id="outreach-content" style="display:flex; flex-direction:column; gap:16px;">
+            <div class="input-group">
+                <label for="outreach-subject" style="display:block; margin-bottom:6px; font-weight:600; color:var(--text-dim);">Subject Line</label>
+                <input type="text" id="outreach-subject" class="input-control" style="width:100%; box-sizing:border-box;">
+            </div>
+            <div class="input-group">
+                <label for="outreach-message" style="display:block; margin-bottom:6px; font-weight:600; color:var(--text-dim);">Message Body</label>
+                <textarea id="outreach-message" class="input-control" style="width:100%; height:280px; resize:vertical; font-family:'Inter', sans-serif; font-size:13px; line-height:1.5; box-sizing:border-box;"></textarea>
+            </div>
+        </div>
+    </div>
+    <div class="slideover-footer">
+        <button class="btn btn-secondary" onclick="toggleOutreach(false)">Close</button>
+        <button class="btn btn-primary" onclick="copyOutreachText()">Copy Message</button>
+    </div>
+</div>
+
+<div id="toast-container"></div>
+
+    <script>
+        const DAILY_LIMIT = {{ daily_limit }};
+    </script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

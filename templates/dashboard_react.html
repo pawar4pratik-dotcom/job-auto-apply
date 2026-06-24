@@ -1,0 +1,1574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobBot Command Center v3.0</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0}
+        body,html,#root{background:#060910;min-height:100vh;color:#E8EDF5;font-family:'Inter',system-ui,sans-serif}
+        ::-webkit-scrollbar{width:5px;height:5px}
+        ::-webkit-scrollbar-track{background:transparent}
+        ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:4px}
+        ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.18)}
+        @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+        @keyframes slide-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes glow-ping{0%{opacity:.8;transform:scale(1)}100%{opacity:0;transform:scale(2.2)}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes fade-in{from{opacity:0}to{opacity:1}}
+        @keyframes toast-in{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes toast-out{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(40px)}}
+        @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+        .log-row{animation:slide-in .2s ease}
+        .job-card{transition:border-color .2s,transform .12s,box-shadow .2s}
+        .job-card:hover{border-color:rgba(255,255,255,.14)!important;transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,0,0,.3)}
+        .tab-btn{transition:color .15s,border-color .15s,background .15s}
+        .tab-btn:hover{background:rgba(255,255,255,.03)}
+        .score-ring{transition:stroke-dashoffset .6s cubic-bezier(.4,0,.2,1)}
+        .stat-card{transition:border-color .2s,transform .15s}
+        .stat-card:hover{border-color:rgba(255,255,255,.12)!important;transform:translateY(-2px)}
+        .btn-glow{transition:all .15s}
+        .btn-glow:hover{filter:brightness(1.15);box-shadow:0 0 20px rgba(0,229,160,.15)}
+        .btn-glow:active{transform:scale(.97)}
+        .toggle-switch{transition:background .2s}
+        .scrollable{overflow-y:auto}
+        .skeleton{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px}
+        .slide-over{transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s}
+        .toast-enter{animation:toast-in .3s ease}
+        .toast-exit{animation:toast-out .3s ease forwards}
+        .filter-chip{transition:all .15s}
+        .filter-chip:hover{background:rgba(255,255,255,.08)!important}
+        .empty-state{animation:fade-in .5s ease}
+        input:focus,textarea:focus{border-color:rgba(0,229,160,.4)!important;outline:none}
+        textarea{resize:vertical}
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script>
+      Babel.registerPreset("custom-react", {
+        presets: [
+          [Babel.availablePresets.react, { runtime: "classic" }],
+          Babel.availablePresets.env
+        ]
+      });
+    </script>
+
+    <script type="text/babel" data-presets="custom-react">
+    {% raw %}
+    const {useState,useEffect,useRef,useCallback,useMemo} = React;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // DESIGN SYSTEM
+    // ═══════════════════════════════════════════════════════════════════
+    const T = {
+      bg:"#060910", surface:"#0C1017", surface2:"#111822", surface3:"#182030",
+      border:"rgba(255,255,255,.06)", borderHover:"rgba(255,255,255,.12)",
+      accent:"#00E5A0", accentDim:"rgba(0,229,160,.1)", accentGlow:"rgba(0,229,160,.2)",
+      amber:"#FFB830", amberDim:"rgba(255,184,48,.1)",
+      coral:"#FF5E5B", coralDim:"rgba(255,94,91,.1)",
+      purple:"#A78BFA", purpleDim:"rgba(167,139,250,.1)",
+      blue:"#60A5FA", blueDim:"rgba(96,165,250,.1)",
+      cyan:"#22D3EE", cyanDim:"rgba(34,211,238,.1)",
+      text:"#E8EDF5", textMuted:"#6B7A8D", textDim:"#9BA8B8",
+      mono:"'JetBrains Mono','Fira Code',monospace",
+      sans:"'Inter',system-ui,-apple-system,sans-serif",
+    };
+
+    const STATE_META = {
+      discovered:{color:T.textMuted,bg:"rgba(107,122,141,.12)",label:"Discovered"},
+      scored:{color:T.blue,bg:T.blueDim,label:"Scored"},
+      applied:{color:T.accent,bg:T.accentDim,label:"Applied"},
+      interview:{color:T.purple,bg:T.purpleDim,label:"Interview"},
+      offer:{color:"#34D399",bg:"rgba(52,211,153,.12)",label:"Offer ✦"},
+      rejected:{color:T.coral,bg:T.coralDim,label:"Rejected"},
+      skipped:{color:T.amber,bg:T.amberDim,label:"Skipped"},
+      "manual needed":{color:T.cyan,bg:T.cyanDim,label:"Manual"},
+      viewed:{color:T.blue,bg:T.blueDim,label:"Viewed"},
+      "pending apply":{color:T.amber,bg:T.amberDim,label:"Pending"},
+    };
+    const LOG_COLORS = {info:T.textDim,ai:T.purple,action:T.blue,success:T.accent,warn:T.amber,error:T.coral};
+
+    // ─── Shared Styles ───
+    const inputS = {width:"100%",background:T.bg,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 13px",color:T.text,fontFamily:T.mono,fontSize:"12.5px",outline:"none",boxSizing:"border-box"};
+    const textareaS = {...inputS, minHeight:100, fontFamily:T.sans, fontSize:"13px", lineHeight:1.6};
+    function btn(color,full){return{background:full?color:`${color}18`,border:`1px solid ${color}${full?"":"44"}`,borderRadius:8,color:full?"#060910":color,padding:"8px 16px",fontSize:"12.5px",fontFamily:T.sans,cursor:"pointer",fontWeight:600,letterSpacing:".01em",display:"inline-flex",alignItems:"center",gap:6}}
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TOAST SYSTEM
+    // ═══════════════════════════════════════════════════════════════════
+    let _toastId = 0;
+    const toastBus = { listeners: [], emit(t){this.listeners.forEach(l=>l(t))}, on(l){this.listeners.push(l)} };
+    function toast(message,type="info"){toastBus.emit({id:++_toastId,message,type,ts:Date.now()})}
+
+    function ToastContainer(){
+      const [toasts,setToasts]=useState([]);
+      useEffect(()=>{toastBus.on(t=>{setToasts(p=>[...p,t]);setTimeout(()=>setToasts(p=>p.filter(x=>x.id!==t.id)),3500)})},[]);
+      const colors={success:T.accent,error:T.coral,info:T.blue,warn:T.amber};
+      return React.createElement("div",{style:{position:"fixed",top:60,right:20,zIndex:9999,display:"flex",flexDirection:"column",gap:8}},
+        toasts.map(t=>React.createElement("div",{key:t.id,className:"toast-enter",style:{background:T.surface2,border:`1px solid ${colors[t.type]||T.border}`,borderRadius:10,padding:"12px 18px",color:colors[t.type]||T.text,fontSize:"13px",fontWeight:500,boxShadow:`0 4px 24px rgba(0,0,0,.4)`,minWidth:250,maxWidth:380}},t.message))
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // MICRO COMPONENTS
+    // ═══════════════════════════════════════════════════════════════════
+    function Pill({state}){
+      const s=(state||"discovered").toLowerCase();
+      const m=STATE_META[s]||STATE_META.discovered;
+      return React.createElement("span",{style:{fontFamily:T.mono,fontSize:"9.5px",fontWeight:600,letterSpacing:".05em",padding:"3px 8px",borderRadius:4,color:m.color,background:m.bg,whiteSpace:"nowrap"}},m.label.toUpperCase());
+    }
+
+    function ScoreRing({score,size=42}){
+      const r=(size-6)/2,circ=2*Math.PI*r,offset=circ*(1-score/100);
+      const color=score>=75?T.accent:score>=55?T.amber:T.coral;
+      return React.createElement("svg",{width:size,height:size,style:{transform:"rotate(-90deg)",flexShrink:0}},
+        React.createElement("circle",{cx:size/2,cy:size/2,r,fill:"none",stroke:"rgba(255,255,255,.05)",strokeWidth:3}),
+        React.createElement("circle",{cx:size/2,cy:size/2,r,fill:"none",stroke:color,strokeWidth:3,strokeDasharray:circ,strokeDashoffset:offset,strokeLinecap:"round",className:"score-ring"}),
+        React.createElement("text",{x:size/2,y:size/2,dominantBaseline:"central",textAnchor:"middle",style:{fontFamily:T.mono,fontSize:"11px",fill:color,fontWeight:600,transform:"rotate(90deg)",transformOrigin:`${size/2}px ${size/2}px`}},score)
+      );
+    }
+
+    function LiveDot({active,color=T.accent}){
+      return React.createElement("span",{style:{position:"relative",display:"inline-flex",width:9,height:9}},
+        active&&React.createElement("span",{style:{position:"absolute",inset:0,borderRadius:"50%",background:color,animation:"glow-ping 1.4s ease-out infinite"}}),
+        React.createElement("span",{style:{position:"relative",width:9,height:9,borderRadius:"50%",background:active?color:T.textMuted,animation:active?"pulse-dot 1.6s ease-in-out infinite":"none"}})
+      );
+    }
+
+    function StatCard({label,value,sub,color=T.text,icon}){
+      return React.createElement("div",{className:"stat-card",style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"16px 18px"}},
+        icon&&React.createElement("div",{style:{fontSize:"16px",marginBottom:6}},icon),
+        React.createElement("div",{style:{fontFamily:T.mono,fontSize:"28px",fontWeight:600,color,lineHeight:1}},value),
+        React.createElement("div",{style:{fontSize:"10.5px",color:T.textMuted,marginTop:6,letterSpacing:".05em",textTransform:"uppercase"}},label),
+        sub&&React.createElement("div",{style:{fontSize:"11px",color:T.textDim,marginTop:3}},sub)
+      );
+    }
+
+    function EmptyState({icon,title,sub}){
+      return React.createElement("div",{className:"empty-state",style:{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"60px 20px",textAlign:"center"}},
+        React.createElement("div",{style:{fontSize:"48px",marginBottom:16,opacity:.6}},icon),
+        React.createElement("div",{style:{fontSize:"15px",fontWeight:500,color:T.textDim}},title),
+        sub&&React.createElement("div",{style:{fontSize:"12.5px",color:T.textMuted,marginTop:6,maxWidth:300}},sub)
+      );
+    }
+
+    function LogRow({entry}){
+      const color=LOG_COLORS[entry.type]||T.textDim;
+      return React.createElement("div",{className:"log-row",style:{display:"flex",gap:10,padding:"4px 10px",borderRadius:4,background:entry.type==="error"?"rgba(255,94,91,.04)":entry.type==="success"?"rgba(0,229,160,.03)":entry.type==="ai"?"rgba(167,139,250,.03)":"transparent",alignItems:"flex-start"}},
+        React.createElement("span",{style:{fontFamily:T.mono,fontSize:"10px",color,flexShrink:0,marginTop:2}},"◈"),
+        React.createElement("span",{style:{fontFamily:T.mono,fontSize:"10px",color:T.textMuted,flexShrink:0,marginTop:2}},entry.time),
+        React.createElement("span",{style:{fontFamily:T.mono,fontSize:"11px",color,lineHeight:1.5,wordBreak:"break-word"}},entry.message)
+      );
+    }
+
+    function ConfirmDialog({open,title,msg,onConfirm,onCancel}){
+      if(!open)return null;
+      return React.createElement("div",{style:{position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,.6)",display:"flex",alignItems:"center",justifyContent:"center",animation:"fade-in .15s"}},
+        React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:14,padding:"24px 28px",maxWidth:380,width:"90%"}},
+          React.createElement("div",{style:{fontSize:"15px",fontWeight:600,marginBottom:8}},title),
+          React.createElement("div",{style:{fontSize:"13px",color:T.textDim,marginBottom:20,lineHeight:1.5}},msg),
+          React.createElement("div",{style:{display:"flex",gap:8,justifyContent:"flex-end"}},
+            React.createElement("button",{onClick:onCancel,style:{...btn(T.textMuted),borderColor:T.border}},"Cancel"),
+            React.createElement("button",{onClick:onConfirm,style:btn(T.coral)},"Confirm")
+          )
+        )
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB: COMMAND CENTER
+    // ═══════════════════════════════════════════════════════════════════
+    function CommandCenterTab({running,jobs,logs,logsEndRef,uptime,config,onStart,onStop,fmtUptime,todayStats}){
+      const applied=todayStats.applied||0, limit=config.dailyLimit||50;
+      const pct=Math.min(100,Math.round(applied/limit*100));
+
+      return React.createElement("div",{style:{display:"flex",gap:16,height:"100%"}},
+        // Left: Logs
+        React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column",gap:14}},
+          // Stats row
+          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}},
+            React.createElement(StatCard,{icon:"📤",label:"Applied today",value:applied,color:T.accent}),
+            React.createElement(StatCard,{icon:"💼",label:"Interviews",value:todayStats.interview||0,color:T.purple}),
+            React.createElement(StatCard,{icon:"✅",label:"Offers",value:todayStats.offer||0,color:"#34D399"}),
+            React.createElement(StatCard,{icon:"⚠️",label:"Skipped",value:todayStats.skipped||0,color:T.amber}),
+            React.createElement(StatCard,{icon:"❌",label:"Errors",value:todayStats.errors||0,color:T.coral})
+          ),
+          // Progress bar
+          React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 16px"}},
+            React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:6}},
+              React.createElement("span",{style:{fontSize:"11px",color:T.textMuted}},"Daily progress"),
+              React.createElement("span",{style:{fontSize:"11px",fontFamily:T.mono,color:pct>=90?T.coral:pct>=70?T.amber:T.accent}},applied+" / "+limit)
+            ),
+            React.createElement("div",{style:{height:6,background:"rgba(255,255,255,.05)",borderRadius:3,overflow:"hidden"}},
+              React.createElement("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${T.accent},${T.blue})`,borderRadius:3,transition:"width .5s"}})
+            )
+          ),
+          // Live log console
+          React.createElement("div",{className:"scrollable",style:{flex:1,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 6px",minHeight:0}},
+            logs.length===0
+              ?React.createElement(EmptyState,{icon:"📡",title:"Waiting for logs",sub:"Start the bot to see real-time activity"})
+              :logs.map(e=>React.createElement(LogRow,{key:e.id,entry:e})),
+            React.createElement("div",{ref:logsEndRef})
+          )
+        ),
+        // Right: Controls
+        React.createElement("div",{style:{width:240,flexShrink:0,display:"flex",flexDirection:"column",gap:10}},
+          // Status card
+          React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"16px"}},
+            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:12}},
+              React.createElement(LiveDot,{active:running}),
+              React.createElement("span",{style:{fontSize:"13px",fontWeight:500,color:running?T.accent:T.textMuted}},running?"Bot Running":"Bot Idle")
+            ),
+            running&&React.createElement("div",{style:{fontFamily:T.mono,fontSize:"22px",color:T.text,textAlign:"center",padding:"8px 0"}},fmtUptime(uptime)),
+            React.createElement("button",{className:"btn-glow",onClick:running?onStop:()=>onStart("all"),style:{...btn(running?T.coral:T.accent,true),width:"100%",justifyContent:"center",padding:"10px 16px",fontSize:"13.5px",marginTop:8}},running?"■ Stop Bot":"▶ Start All Bots"),
+            running&&React.createElement("button",{onClick:()=>{fetch("/api/force_stop",{method:"POST"}).then(()=>toast("Force stopped","warn")).catch(()=>{})},style:{...btn(T.coral),width:"100%",justifyContent:"center",padding:"7px 12px",fontSize:"11px",marginTop:4,opacity:0.8}},"⛔ Force Stop (clear stuck state)")
+          ),
+          // Per-portal controls
+          React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px"}},
+            React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}},"Launch by portal"),
+            ["linkedin","naukri","indeed"].map(p=>
+              React.createElement("button",{key:p,className:"btn-glow",disabled:running,onClick:()=>onStart(p),style:{...btn(T.blue),width:"100%",justifyContent:"center",marginBottom:6,opacity:running ? 0.4 : 1,cursor:running?"not-allowed":"pointer"}},
+                (p==="linkedin"?"🔗 ":p==="naukri"?"🟢 ":"🔵 ")+p.charAt(0).toUpperCase()+p.slice(1))
+            )
+          ),
+          // Config summary
+          React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px",fontSize:"11.5px"}},
+            React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}},"Config"),
+            [{l:"Headless",v:config.headless?"On":"Off"},{l:"Limit",v:config.dailyLimit},{l:"Auto ≥",v:config.autoThreshold||75},{l:"Review ≥",v:config.reviewThreshold||55}].map(({l,v})=>
+              React.createElement("div",{key:l,style:{display:"flex",justifyContent:"space-between",padding:"3px 0"}},
+                React.createElement("span",{style:{color:T.textMuted}},l),
+                React.createElement("span",{style:{fontFamily:T.mono,color:T.textDim}},v)
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB: JOB PIPELINE
+    // ═══════════════════════════════════════════════════════════════════
+    function JobPipelineTab({jobs}){
+      const [search,setSearch]=useState("");
+      const [statusFilter,setStatusFilter]=useState("all");
+      const [portalFilter,setPortalFilter]=useState("all");
+      const [selected,setSelected]=useState(null);
+
+      const statuses=useMemo(()=>{const s=new Set(jobs.map(j=>(j.Status||"").toLowerCase()));return["all",...s]},[jobs]);
+      const portals=useMemo(()=>{const p=new Set(jobs.map(j=>j.Portal||"Unknown"));return["all",...p]},[jobs]);
+
+      const filtered=useMemo(()=>jobs.filter(j=>{
+        if(search){const q=search.toLowerCase();if(!(j.Role||"").toLowerCase().includes(q)&&!(j.Company||"").toLowerCase().includes(q))return false}
+        if(statusFilter!=="all"&&(j.Status||"").toLowerCase()!==statusFilter)return false;
+        if(portalFilter!=="all"&&j.Portal!==portalFilter)return false;
+        return true;
+      }),[jobs,search,statusFilter,portalFilter]);
+
+      const selJob=selected?jobs.find(j=>j.URL===selected):null;
+
+      return React.createElement("div",{style:{display:"flex",gap:16,height:"100%"}},
+        // Left: List
+        React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column",gap:12,minWidth:0}},
+          // Search + filters
+          React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}},
+            React.createElement("input",{placeholder:"🔍 Search roles, companies...",value:search,onChange:e=>setSearch(e.target.value),style:{...inputS,flex:1,minWidth:200,fontSize:"13px"}}),
+            React.createElement("select",{value:statusFilter,onChange:e=>setStatusFilter(e.target.value),style:{...inputS,width:"auto",cursor:"pointer"}},statuses.map(s=>React.createElement("option",{key:s,value:s},s==="all"?"All Status":s.charAt(0).toUpperCase()+s.slice(1)))),
+            React.createElement("select",{value:portalFilter,onChange:e=>setPortalFilter(e.target.value),style:{...inputS,width:"auto",cursor:"pointer"}},portals.map(p=>React.createElement("option",{key:p,value:p},p==="all"?"All Portals":p))),
+            React.createElement("button",{onClick:()=>window.open('/api/export-csv','_blank'),style:{...btn(T.accent,false),padding:"8px 12px",fontSize:"12.5px"}},"📥 Export CSV")
+          ),
+          React.createElement("div",{style:{fontSize:"11px",color:T.textMuted}},filtered.length+" of "+jobs.length+" jobs"),
+          // Job list
+          React.createElement("div",{className:"scrollable",style:{flex:1,display:"flex",flexDirection:"column",gap:6,minHeight:0}},
+            filtered.length===0
+              ?React.createElement(EmptyState,{icon:"🔍",title:"No jobs found",sub:"Try adjusting your filters or start the bot"})
+              :filtered.map(j=>{
+                const score=parseInt(String(j["Match %"]||"0").replace("%",""))||0;
+                const isSelected=selected===j.URL;
+                return React.createElement("div",{key:j.URL,className:"job-card",onClick:()=>setSelected(j.URL),style:{background:isSelected?T.surface3:T.surface2,border:`1px solid ${isSelected?T.accent+"66":T.border}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",display:"flex",gap:12,alignItems:"center"}},
+                  React.createElement(ScoreRing,{score,size:38}),
+                  React.createElement("div",{style:{flex:1,minWidth:0}},
+                    React.createElement("div",{style:{fontSize:"13px",fontWeight:500,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},j.Role||"Unknown Role"),
+                    React.createElement("div",{style:{fontSize:"11.5px",color:T.textMuted,marginTop:2}},
+                      (j.Company||"?")+(" · "+(j.Portal||""))+(" · "+(j.Date||""))
+                    )
+                  ),
+                  React.createElement(Pill,{state:j.Status})
+                );
+              })
+          )
+        ),
+        // Right: Detail panel
+        React.createElement("div",{style:{width:340,flexShrink:0,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:selJob?"18px":"0",display:"flex",flexDirection:"column",overflow:"hidden"}},
+          selJob
+            ?React.createElement(React.Fragment,null,
+              React.createElement("div",{style:{fontSize:"15px",fontWeight:600,marginBottom:4}},selJob.Role),
+              React.createElement("div",{style:{fontSize:"12.5px",color:T.textMuted,marginBottom:12}},(selJob.Company||"")+" · "+(selJob.Portal||"")),
+              React.createElement("div",{style:{display:"flex",gap:6,marginBottom:14}},
+                React.createElement(Pill,{state:selJob.Status}),
+                React.createElement("span",{style:{fontFamily:T.mono,fontSize:"11px",color:T.accent}},selJob["Match %"]||"—")
+              ),
+              selJob.URL&&selJob.URL.startsWith("http")&&React.createElement("a",{href:selJob.URL,target:"_blank",rel:"noopener",style:{fontSize:"12px",color:T.blue,marginBottom:12,display:"block"}},"Open job posting ↗"),
+              selJob.Error&&React.createElement("div",{style:{background:T.coralDim,border:`1px solid rgba(255,94,91,.2)`,borderRadius:8,padding:"10px",fontSize:"12px",color:T.coral,marginBottom:12}},selJob.Error),
+              React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}},"Matched skills"),
+              React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:4,marginBottom:14}},
+                (selJob.matched_skills||[]).length>0
+                  ?(selJob.matched_skills||[]).map((s,i)=>React.createElement("span",{key:i,style:{fontSize:"10.5px",background:T.accentDim,color:T.accent,padding:"2px 8px",borderRadius:4,fontFamily:T.mono}},s))
+                  :React.createElement("span",{style:{fontSize:"11px",color:T.textMuted}},"No skill data available")
+              )
+            )
+            :React.createElement(EmptyState,{icon:"👈",title:"Select a job",sub:"Click on a job card to see details"})
+        )
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB: ANALYTICS
+    // ═══════════════════════════════════════════════════════════════════
+    function AnalyticsTab({jobs}){
+      const chartRef1=useRef(null), chartRef2=useRef(null);
+      const chart1=useRef(null), chart2=useRef(null);
+
+      const counts=useMemo(()=>{
+        const c={applied:0,interview:0,offer:0,skipped:0,rejected:0,scored:0,total:jobs.length};
+        jobs.forEach(j=>{const s=(j.Status||"").toLowerCase();if(c[s]!==undefined)c[s]++});
+        c.avgScore=jobs.length?Math.round(jobs.reduce((a,j)=>a+(parseInt(String(j["Match %"]||"0").replace("%",""))||0),0)/jobs.length):0;
+        return c;
+      },[jobs]);
+
+      const portalCounts=useMemo(()=>{
+        const p={};jobs.forEach(j=>{const k=j.Portal||"Other";p[k]=(p[k]||0)+1});return p;
+      },[jobs]);
+
+      useEffect(()=>{
+        if(!chartRef1.current)return;
+        if(chart1.current)chart1.current.destroy();
+        const labels=Object.keys(portalCounts), data=Object.values(portalCounts);
+        const colors=["#00E5A0","#60A5FA","#A78BFA","#FFB830","#FF5E5B","#22D3EE"];
+        chart1.current=new Chart(chartRef1.current,{type:"doughnut",data:{labels,datasets:[{data,backgroundColor:colors.slice(0,labels.length),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"bottom",labels:{color:"#9BA8B8",font:{size:11},padding:12}}}}});
+        return()=>{if(chart1.current)chart1.current.destroy()};
+      },[portalCounts]);
+
+      useEffect(()=>{
+        if(!chartRef2.current)return;
+        if(chart2.current)chart2.current.destroy();
+        const labels=["Scored","Applied","Interview","Offer"];
+        const data=[counts.scored,counts.applied,counts.interview,counts.offer];
+        chart2.current=new Chart(chartRef2.current,{type:"bar",data:{labels,datasets:[{data,backgroundColor:["#60A5FA","#00E5A0","#A78BFA","#34D399"],borderRadius:6,borderSkipped:false}]},options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,scales:{x:{grid:{color:"rgba(255,255,255,.04)"},ticks:{color:"#6B7A8D"}},y:{grid:{display:false},ticks:{color:"#9BA8B8",font:{size:11}}}},plugins:{legend:{display:false}}}});
+        return()=>{if(chart2.current)chart2.current.destroy()};
+      },[counts]);
+
+      return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:16}},
+        // Stat cards
+        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}},
+          React.createElement(StatCard,{icon:"📊",label:"Total Jobs",value:counts.total}),
+          React.createElement(StatCard,{icon:"📤",label:"Applied",value:counts.applied,color:T.accent}),
+          React.createElement(StatCard,{icon:"🎯",label:"Avg Score",value:counts.avgScore+"%",color:T.amber}),
+          React.createElement(StatCard,{icon:"💎",label:"Success Rate",value:counts.total?Math.round((counts.interview+counts.offer)/Math.max(counts.applied,1)*100)+"%":"0%",color:T.purple})
+        ),
+        // Charts row
+        React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}},
+          React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"18px"}},
+            React.createElement("div",{style:{fontSize:"12px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:12}},"Portal breakdown"),
+            React.createElement("div",{style:{height:220}},React.createElement("canvas",{ref:chartRef1}))
+          ),
+          React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"18px"}},
+            React.createElement("div",{style:{fontSize:"12px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:12}},"Application funnel"),
+            React.createElement("div",{style:{height:220}},React.createElement("canvas",{ref:chartRef2}))
+          )
+        )
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB: Q&A MEMORY
+    // ═══════════════════════════════════════════════════════════════════
+    function QATab(){
+      const [qa,setQA]=useState([]);
+      const [newQ,setNewQ]=useState("");
+      const [newA,setNewA]=useState("");
+      const [qSearch,setQSearch]=useState("");
+
+      const fetchQA=()=>{fetch("/api/qa/all").then(r=>r.json()).then(d=>setQA(d||[])).catch(()=>setQA([{question:"Sample Q",answer:"Sample A"}]))};
+      useEffect(()=>{fetchQA()},[]);
+
+      const handleAdd=()=>{
+        if(!newQ.trim()||!newA.trim())return;
+        fetch("/api/qa/answer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:newQ,answer:newA})})
+          .then(()=>{setNewQ("");setNewA("");fetchQA();toast("Q&A entry added","success")}).catch(()=>toast("Failed to add","error"));
+      };
+
+      const handleDelete=(q)=>{
+        fetch("/api/qa/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:q})})
+          .then(()=>{fetchQA();toast("Entry deleted","success")}).catch(()=>toast("Delete failed","error"));
+      };
+
+      const filtered=qSearch?qa.filter(x=>(x.question||"").toLowerCase().includes(qSearch.toLowerCase())||(x.answer||"").toLowerCase().includes(qSearch.toLowerCase())):qa;
+
+      return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:14}},
+        React.createElement("div",{style:{background:T.purpleDim,border:`1px solid rgba(167,139,250,.2)`,borderRadius:10,padding:"12px 16px",fontSize:"12.5px",color:T.purple}},"🧠 Q&A memory is used when the bot encounters unknown form fields. "+qa.length+" entries stored."),
+        React.createElement("input",{placeholder:"🔍 Search questions or answers...",value:qSearch,onChange:e=>setQSearch(e.target.value),style:{...inputS,fontSize:"13px"}}),
+        React.createElement("div",{className:"scrollable",style:{flex:1,display:"flex",flexDirection:"column",gap:8,maxHeight:400}},
+          filtered.length===0?React.createElement(EmptyState,{icon:"🧠",title:"No Q&A entries",sub:"Add entries below to help the bot fill forms automatically"}):
+          filtered.map((item,i)=>React.createElement("div",{key:i,style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}},
+            React.createElement("div",{style:{flex:1}},
+              React.createElement("div",{style:{fontSize:"12.5px",color:T.text,fontWeight:500}},item.question),
+              React.createElement("div",{style:{fontSize:"12px",color:T.accent,marginTop:4,fontFamily:T.mono}},item.answer)
+            ),
+            React.createElement("button",{onClick:()=>handleDelete(item.question),style:{background:"transparent",border:"none",color:T.coral,cursor:"pointer",fontSize:"14px",padding:"2px 6px",flexShrink:0}},"✕")
+          ))
+        ),
+        // Add new
+        React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"14px"}},
+          React.createElement("div",{style:{fontSize:"10.5px",color:T.textMuted,marginBottom:10,textTransform:"uppercase",letterSpacing:".05em"}},"Add new entry"),
+          React.createElement("input",{placeholder:"Form field question…",value:newQ,onChange:e=>setNewQ(e.target.value),style:inputS}),
+          React.createElement("input",{placeholder:"Your answer…",value:newA,onChange:e=>setNewA(e.target.value),style:{...inputS,marginTop:6}}),
+          React.createElement("button",{className:"btn-glow",style:{...btn(T.accent),marginTop:10},onClick:handleAdd},"+ Add to memory")
+        )
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB: HR OUTREACH (BULK JD + AUTO-EXTRACT)
+    // ═══════════════════════════════════════════════════════════════════
+    function OutreachTab(){
+      const [mode,setMode]=useState("single"); // single or bulk
+      // Single mode
+      const [jd,setJd]=useState("");
+      const [role,setRole]=useState("");
+      const [company,setCompany]=useState("");
+      const [emails,setEmails]=useState("");
+      const [subject,setSubject]=useState("");
+      const [body,setBody]=useState("");
+      const [attachResume,setAttachResume]=useState(true);
+      const [crafting,setCrafting]=useState(false);
+      const [sending,setSending]=useState(false);
+      const [results,setResults]=useState(null);
+      const [history,setHistory]=useState([]);
+      const [step,setStep]=useState(1);
+      // Bulk mode
+      const [bulkSubMode,setBulkSubMode]=useState("split"); // split or slots
+      const [bulkPasteText,setBulkPasteText]=useState("");
+      const [bulkJds,setBulkJds]=useState([""]);
+      const [bulkEmails,setBulkEmails]=useState([""]);
+      const [drafts,setDrafts]=useState([]);
+      const [bulkStep,setBulkStep]=useState(1); // 1=input, 2=review, 3=sending
+      const [bulkSending,setBulkSending]=useState(false);
+      const [bulkResults,setBulkResults]=useState([]);
+      // AI extracted info for single mode
+      const [extracted,setExtracted]=useState(null);
+
+      useEffect(()=>{fetch("/api/outreach/history").then(r=>r.json()).then(d=>setHistory(d||[])).catch(()=>{});},[]);
+
+      const handleCraft=()=>{
+        if(!jd.trim()){toast("Paste a Job Description first","warn");return}
+        setCrafting(true);
+        // Use bulk_craft with single JD to auto-extract role/company
+        fetch("/api/outreach/bulk_craft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jds:[jd],emails_per_jd:{"0":emails}})})
+          .then(r=>r.json()).then(d=>{
+            if(d.drafts&&d.drafts[0]){
+              const dr=d.drafts[0];
+              setRole(dr.role||"");setCompany(dr.company||"");
+              setSubject(dr.subject||"");setBody(dr.body||"");
+              setExtracted({requirements:dr.requirements||[],matched:dr.matched_skills||[]});
+              setStep(2);toast("✨ AI extracted role, company & drafted email!","success");
+            } else {toast("AI returned empty result","error")}
+          }).catch(()=>toast("Failed to craft email","error")).finally(()=>setCrafting(false));
+      };
+
+      const handleSend=()=>{
+        const emailList=emails.split(/[,\n;]+/).map(e=>e.trim()).filter(e=>e&&e.includes("@"));
+        if(emailList.length===0){toast("Add at least one valid email","warn");return}
+        if(!subject.trim()||!body.trim()){toast("Subject and body required","warn");return}
+        setSending(true);
+        fetch("/api/outreach/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({emails:emailList,subject,body,attach_resume:attachResume,jd,role,company})})
+          .then(r=>r.json()).then(d=>{setResults(d);setStep(3);toast(`Sent to ${d.summary?.sent||0} of ${d.summary?.total||0}`,"success");
+            fetch("/api/outreach/history").then(r=>r.json()).then(h=>setHistory(h||[])).catch(()=>{});
+          }).catch(()=>toast("Send failed","error")).finally(()=>setSending(false));
+      };
+
+      // Bulk handlers
+      const addBulkSlot=()=>{setBulkJds(p=>[...p,""]);setBulkEmails(p=>[...p,""])};
+      const removeBulkSlot=(i)=>{setBulkJds(p=>p.filter((_,idx)=>idx!==i));setBulkEmails(p=>p.filter((_,idx)=>idx!==i))};
+      const updateBulkJd=(i,v)=>{const n=[...bulkJds];n[i]=v;setBulkJds(n)};
+      const updateBulkEmail=(i,v)=>{const n=[...bulkEmails];n[i]=v;setBulkEmails(n)};
+
+      const handleBulkCraft=()=>{
+        const validJds=bulkJds.filter(j=>j.trim());
+        if(validJds.length===0){toast("Add at least one JD","warn");return}
+        setCrafting(true);
+        const emailsMap={};
+        bulkEmails.forEach((e,i)=>{emailsMap[String(i)]=e});
+        fetch("/api/outreach/bulk_craft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jds:bulkJds,emails_per_jd:emailsMap})})
+          .then(r=>r.json()).then(d=>{
+            const ds = (d.drafts||[]).map(dr => ({...dr, emails_raw: (dr.emails||[]).join(", ")}));
+            setDrafts(ds);
+            setBulkStep(2);
+            toast(`✨ AI processed ${(d.drafts||[]).length} JDs!`,"success")
+          })
+          .catch(()=>toast("Bulk craft failed","error")).finally(()=>setCrafting(false));
+      };
+
+      const handleSmartSplitCraft=()=>{
+        if(!bulkPasteText.trim()){toast("Paste JDs text first","warn");return}
+        setCrafting(true);
+        fetch("/api/outreach/smart_split_craft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({raw_text:bulkPasteText})})
+          .then(r=>r.json()).then(d=>{
+            if(d.error){
+              toast(d.error,"error");
+            } else {
+              const ds = (d.drafts||[]).map(dr => ({...dr, emails_raw: (dr.emails||[]).join(", ")}));
+              setDrafts(ds);
+              setBulkStep(2);
+              toast(`✨ AI split & drafted ${(d.drafts||[]).length} JDs!`,"success");
+            }
+          })
+          .catch(()=>toast("Smart split failed","error")).finally(()=>setCrafting(false));
+      };
+
+      const updateDraftField=(idx,field,val)=>{
+        setDrafts(p=>p.map((d,i)=>{
+          if(i===idx){
+            if(field==="emails"){
+              const emailList=val.split(/[,\s;]+/).map(e=>e.trim()).filter(e=>e);
+              return {...d,emails:emailList,emails_raw:val};
+            }
+            return {...d,[field]:val};
+          }
+          return d;
+        }));
+      };
+
+      const handleBulkSendAll=()=>{
+        setBulkSending(true);setBulkStep(3);
+        const promises=drafts.filter(d=>d.emails&&d.emails.length>0&&d.subject&&d.body).map(d=>
+          fetch("/api/outreach/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({emails:d.emails,subject:d.subject,body:d.body,attach_resume:attachResume,role:d.role,company:d.company})})
+            .then(r=>r.json()).then(res=>({...d,...res})).catch(e=>({...d,error:String(e)}))
+        );
+        Promise.all(promises).then(results=>{
+          setBulkResults(results);
+          const totalSent=results.reduce((a,r)=>(a+(r.summary?.sent||0)),0);
+          toast(`🚀 Sent ${totalSent} emails across ${results.length} JDs!`,"success");
+          fetch("/api/outreach/history").then(r=>r.json()).then(h=>setHistory(h||[])).catch(()=>{});
+        }).finally(()=>setBulkSending(false));
+      };
+
+      const emailCount=emails.split(/[,\n;]+/).map(e=>e.trim()).filter(e=>e&&e.includes("@")).length;
+
+      return React.createElement("div",{style:{display:"flex",gap:16,height:"100%"}},
+        React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column",gap:14}},
+          // Header + mode toggle
+          React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},
+            React.createElement("span",{style:{fontSize:"20px"}},"📧"),
+            React.createElement("div",null,
+              React.createElement("div",{style:{fontSize:"15px",fontWeight:600}},"HR Email Outreach"),
+              React.createElement("div",{style:{fontSize:"12px",color:T.textMuted}},"Just paste JD → AI extracts everything & drafts email")
+            ),
+            React.createElement("div",{style:{flex:1}}),
+            React.createElement("div",{style:{display:"flex",gap:4,background:T.surface2,borderRadius:8,padding:2,border:`1px solid ${T.border}`}},
+              ["single","bulk"].map(m=>React.createElement("button",{key:m,onClick:()=>setMode(m),style:{background:mode===m?T.accentDim:"transparent",border:"none",borderRadius:6,padding:"6px 14px",color:mode===m?T.accent:T.textMuted,fontSize:"12px",fontWeight:600,cursor:"pointer",fontFamily:T.sans}},m==="single"?"Single JD":"Bulk JDs"))
+            )
+          ),
+          React.createElement("div",{style:{background:T.purpleDim,border:"1px solid rgba(167,139,250,.2)",borderRadius:10,padding:"10px 16px",fontSize:"12px",color:T.purple}},"💡 Just paste the JD — AI auto-extracts role, company, requirements & matched skills, then drafts a personalized email. Resume attached automatically."),
+
+          // ───── SINGLE MODE ─────
+          mode==="single"&&step===1&&React.createElement(React.Fragment,null,
+            React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"16px"}},
+              React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}},"📋 Paste Job Description (AI will extract role & company)"),
+              React.createElement("textarea",{placeholder:"Paste the full job description here...\n\nThe AI will automatically extract:\n• Role title\n• Company name\n• Key requirements\n• Your matched skills\n\nThen draft a personalized email!",value:jd,onChange:e=>setJd(e.target.value),style:{...textareaS,minHeight:180}})
+            ),
+            React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"16px"}},
+              React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:8}},
+                React.createElement("span",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em"}},"📧 HR Email Addresses"),
+                emailCount>0&&React.createElement("span",{style:{fontSize:"11px",fontFamily:T.mono,color:T.accent}},emailCount+" recipients")
+              ),
+              React.createElement("textarea",{placeholder:"hr@company.com, recruiter@company.com\n(one per line or comma-separated)",value:emails,onChange:e=>setEmails(e.target.value),style:{...textareaS,minHeight:80}})
+            ),
+            React.createElement("button",{className:"btn-glow",onClick:handleCraft,disabled:crafting,style:{...btn(T.accent,true),justifyContent:"center",padding:"12px",fontSize:"14px",opacity:crafting ? 0.6 : 1}},crafting?"✨ AI is extracting & drafting...":"✨ Extract & Draft Email")
+          ),
+          mode==="single"&&step===2&&React.createElement(React.Fragment,null,
+            // Extracted info
+            extracted&&React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}},
+              React.createElement("div",null,
+                React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}},"🎯 AI-Extracted Requirements"),
+                (extracted.requirements||[]).map((r,i)=>React.createElement("div",{key:i,style:{fontSize:"11.5px",color:T.textDim,padding:"2px 0"}},"• "+r))
+              ),
+              React.createElement("div",null,
+                React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}},"✅ Your Matched Skills"),
+                React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+                  (extracted.matched||[]).map((s,i)=>React.createElement("span",{key:i,style:{fontSize:"10.5px",background:T.accentDim,color:T.accent,padding:"2px 8px",borderRadius:4,fontFamily:T.mono}},s))
+                ),
+                (extracted.matched||[]).length===0&&React.createElement("span",{style:{fontSize:"11px",color:T.textMuted}},"No direct matches found")
+              )
+            ),
+            React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
+              React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px"}},
+                React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",marginBottom:4}},"Role (auto-extracted)"),
+                React.createElement("input",{value:role,onChange:e=>setRole(e.target.value),style:{...inputS,fontSize:"13px",fontWeight:500}})
+              ),
+              React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px"}},
+                React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",marginBottom:4}},"Company (auto-extracted)"),
+                React.createElement("input",{value:company,onChange:e=>setCompany(e.target.value),style:{...inputS,fontSize:"13px",fontWeight:500}})
+              )
+            ),
+            React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px"}},
+              React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",marginBottom:6}},"Subject line"),
+              React.createElement("input",{value:subject,onChange:e=>setSubject(e.target.value),style:{...inputS,fontSize:"14px",fontWeight:500}})
+            ),
+            React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px"}},
+              React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",marginBottom:6}},"Email body (editable)"),
+              React.createElement("textarea",{value:body,onChange:e=>setBody(e.target.value),style:{...textareaS,minHeight:180}})
+            ),
+            React.createElement("div",{style:{display:"flex",gap:12,alignItems:"center"}},
+              React.createElement("label",{style:{display:"flex",alignItems:"center",gap:8,fontSize:"13px",color:T.textDim,cursor:"pointer"}},
+                React.createElement("input",{type:"checkbox",checked:attachResume,onChange:e=>setAttachResume(e.target.checked)}),"📎 Attach resume"
+              ),
+              React.createElement("span",{style:{fontSize:"12px",color:T.textMuted}},emailCount+" recipient"+(emailCount!==1?"s":""))
+            ),
+            React.createElement("div",{style:{display:"flex",gap:10}},
+              React.createElement("button",{onClick:()=>{setStep(1);setExtracted(null)},style:btn(T.textMuted)},"← Back"),
+              React.createElement("button",{className:"btn-glow",onClick:handleSend,disabled:sending,style:{...btn(T.accent,true),flex:1,justifyContent:"center",padding:"12px",fontSize:"14px",opacity:sending ? 0.6 : 1}},sending?"🚀 Sending...":"🚀 Send to "+emailCount+" HR"+(emailCount!==1?"s":""))
+            )
+          ),
+          mode==="single"&&step===3&&results&&React.createElement(React.Fragment,null,
+            React.createElement("div",{style:{background:T.accentDim,border:`1px solid ${T.accent}33`,borderRadius:12,padding:"18px",textAlign:"center"}},
+              React.createElement("div",{style:{fontSize:"32px",marginBottom:8}},"🎉"),
+              React.createElement("div",{style:{fontSize:"16px",fontWeight:600,color:T.accent}},"Outreach Complete!"),
+              React.createElement("div",{style:{fontSize:"13px",color:T.textDim,marginTop:4}},`${results.summary?.sent||0} sent, ${results.summary?.failed||0} failed`)
+            ),
+            (results.results||[]).map((r,i)=>React.createElement("div",{key:i,style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 14px",display:"flex",justifyContent:"space-between"}},
+              React.createElement("span",{style:{fontSize:"12.5px",fontFamily:T.mono}},r.email),
+              React.createElement("span",{style:{fontSize:"11px",fontWeight:500,color:r.status==="sent"?T.accent:T.coral}},r.status==="sent"?"✓ Sent":"✕ Failed")
+            )),
+            React.createElement("button",{onClick:()=>{setStep(1);setResults(null);setJd("");setEmails("");setSubject("");setBody("");setExtracted(null)},style:{...btn(T.blue),justifyContent:"center"}},"Send another")
+          ),
+
+          // ───── BULK MODE ─────
+          mode==="bulk"&&bulkStep===1&&React.createElement(React.Fragment,null,
+            React.createElement("div",{style:{display:"flex",gap:4,background:T.surface3,borderRadius:8,padding:2,width:"fit-content",marginBottom:10}},
+              ["split","slots"].map(sm=>React.createElement("button",{key:sm,onClick:()=>setBulkSubMode(sm),style:{background:bulkSubMode===sm?T.accentDim:"transparent",border:"none",borderRadius:6,padding:"4px 10px",color:bulkSubMode===sm?T.accent:T.textMuted,fontSize:"11px",fontWeight:600,cursor:"pointer",fontFamily:T.sans}},sm==="split"?"🤖 Smart Auto-Split (Paste All)":"📋 Manual Slots"))
+            ),
+            bulkSubMode==="split"&&React.createElement(React.Fragment,null,
+              React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"16px"}},
+                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}},"📋 Paste Raw Combined Text (containing multiple JDs or recruiter posts)"),
+                React.createElement("textarea",{placeholder:"Paste all your JDs or recruiter postings here...\n\nYou can paste them one after another. Delimiters like '---' are helpful, but the AI will split them automatically even without them!\n\nAI will:\n• Separate individual postings\n• Extract recruiter email addresses\n• Extract company/role names\n• Draft cold emails for each\n\nAll drafts will be displayed for review and editing!",value:bulkPasteText,onChange:e=>setBulkPasteText(e.target.value),style:{...textareaS,minHeight:240}})
+              ),
+              React.createElement("button",{className:"btn-glow",onClick:handleSmartSplitCraft,disabled:crafting,style:{...btn(T.accent,true),justifyContent:"center",padding:"12px",fontSize:"14px",opacity:crafting ? 0.6 : 1,marginTop:10}},crafting?"✨ AI is splitting & drafting...":"✨ Extract & Draft All JDs")
+            ),
+            bulkSubMode==="slots"&&React.createElement(React.Fragment,null,
+              bulkJds.map((j,i)=>React.createElement("div",{key:i,style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px",position:"relative",marginBottom:10}},
+                React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:6}},
+                  React.createElement("span",{style:{fontSize:"11px",color:T.accent,fontWeight:600}},"JD #"+(i+1)),
+                  bulkJds.length>1&&React.createElement("button",{onClick:()=>removeBulkSlot(i),style:{background:"none",border:"none",color:T.coral,cursor:"pointer",fontSize:"12px"}},"✕ Remove")
+                ),
+                React.createElement("textarea",{placeholder:"Paste JD here...",value:j,onChange:e=>updateBulkJd(i,e.target.value),style:{...textareaS,minHeight:100}}),
+                React.createElement("input",{placeholder:"HR emails (comma-separated, optional if emails are in JD)",value:bulkEmails[i]||"",onChange:e=>updateBulkEmail(i,e.target.value),style:{...inputS,marginTop:8}})
+              )),
+              React.createElement("div",{style:{display:"flex",gap:10,marginTop:10}},
+                React.createElement("button",{onClick:addBulkSlot,style:{...btn(T.blue),flex:1,justifyContent:"center"}},"+ Add another JD"),
+                React.createElement("button",{className:"btn-glow",onClick:handleBulkCraft,disabled:crafting,style:{...btn(T.accent,true),flex:1,justifyContent:"center",padding:"12px",fontSize:"14px",opacity:crafting ? 0.6 : 1}},crafting?"✨ AI processing JDs...":"✨ Extract & Draft Slots ("+bulkJds.filter(j=>j.trim()).length+" JDs)")
+              )
+            )
+          ),
+          mode==="bulk"&&bulkStep===2&&React.createElement(React.Fragment,null,
+            React.createElement("div",{style:{fontSize:"13px",color:T.accent,fontWeight:600,marginBottom:8}},"📝 Review & Edit "+drafts.length+" Drafts"),
+            React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:14,maxHeight:500,overflowY:"auto",paddingRight:4}},
+              drafts.map((d,i)=>React.createElement("div",{key:i,style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"14px",display:"flex",flexDirection:"column",gap:10}},
+                React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${T.border}`,paddingBottom:8}},
+                  React.createElement("span",{style:{fontSize:"12px",fontWeight:600,color:T.accent}},"Draft #"+(i+1)),
+                  React.createElement("button",{onClick:()=>setDrafts(p=>p.filter((_,idx)=>idx!==i)),style:{background:"none",border:"none",color:T.coral,cursor:"pointer",fontSize:"11.5px"}},"✕ Remove")
+                ),
+                React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
+                  React.createElement("div",null,
+                    React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",marginBottom:4}},"Role"),
+                    React.createElement("input",{value:d.role||"",onChange:e=>updateDraftField(i,"role",e.target.value),style:inputS})
+                  ),
+                  React.createElement("div",null,
+                    React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",marginBottom:4}},"Company"),
+                    React.createElement("input",{value:d.company||"",onChange:e=>updateDraftField(i,"company",e.target.value),style:inputS})
+                  )
+                ),
+                React.createElement("div",null,
+                  React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",marginBottom:4}},"HR Emails (comma-separated)"),
+                  React.createElement("input",{value:d.emails_raw!==undefined?d.emails_raw:(d.emails||[]).join(", "),onChange:e=>updateDraftField(i,"emails",e.target.value),placeholder:"recruiter@company.com",style:inputS})
+                ),
+                React.createElement("div",null,
+                  React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",marginBottom:4}},"Subject Line"),
+                  React.createElement("input",{value:d.subject||"",onChange:e=>updateDraftField(i,"subject",e.target.value),style:inputS})
+                ),
+                React.createElement("div",null,
+                  React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",marginBottom:4}},"Email Body"),
+                  React.createElement("textarea",{value:d.body||"",onChange:e=>updateDraftField(i,"body",e.target.value),style:{...textareaS,minHeight:120}})
+                )
+              ))
+            ),
+            React.createElement("div",{style:{display:"flex",gap:10,marginTop:12,alignItems:"center"}},
+              React.createElement("button",{onClick:()=>setBulkStep(1),style:btn(T.textMuted)},"← Back"),
+              React.createElement("label",{style:{display:"flex",alignItems:"center",gap:6,fontSize:"13px",color:T.textDim,cursor:"pointer"}},
+                React.createElement("input",{type:"checkbox",checked:attachResume,onChange:e=>setAttachResume(e.target.checked)}),"📎 Attach resume"
+              ),
+              React.createElement("button",{className:"btn-glow",onClick:handleBulkSendAll,disabled:bulkSending,style:{...btn(T.accent,true),flex:1,justifyContent:"center",padding:"12px",fontSize:"14px",opacity:bulkSending ? 0.6 : 1}},bulkSending?"🚀 Sending all...":"🚀 Send All "+drafts.length+" Emails")
+            )
+          ),
+          mode==="bulk"&&bulkStep===3&&React.createElement(React.Fragment,null,
+            React.createElement("div",{style:{background:T.accentDim,border:`1px solid ${T.accent}33`,borderRadius:12,padding:"18px",textAlign:"center"}},
+              React.createElement("div",{style:{fontSize:"32px",marginBottom:8}},"🎉"),
+              React.createElement("div",{style:{fontSize:"16px",fontWeight:600,color:T.accent}},"Bulk Outreach Complete!"),
+              React.createElement("div",{style:{fontSize:"13px",color:T.textDim,marginTop:4}},bulkResults.length+" batches processed")
+            ),
+            bulkResults.map((r,i)=>React.createElement("div",{key:i,style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+              React.createElement("span",{style:{fontSize:"12.5px",fontWeight:500}},r.role+" @ "+r.company),
+              React.createElement("span",{style:{fontSize:"11px",color:r.error?T.coral:T.accent,fontFamily:T.mono}},r.error?("✕ "+r.error):((r.summary?.sent||0)+"/"+(r.summary?.total||0)+" sent"))
+            )),
+            React.createElement("button",{onClick:()=>{setBulkStep(1);setBulkJds([""]); setBulkEmails([""]); setDrafts([]); setBulkResults([]); setBulkPasteText("")},style:{...btn(T.blue),justifyContent:"center"}},"Send another batch")
+          )
+        ),
+        // Right: History
+        React.createElement("div",{style:{width:260,flexShrink:0,display:"flex",flexDirection:"column",gap:10}},
+          React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em"}},"📬 Outreach history"),
+          React.createElement("div",{className:"scrollable",style:{flex:1,display:"flex",flexDirection:"column",gap:6}},
+            history.length===0
+              ?React.createElement(EmptyState,{icon:"📭",title:"No outreach yet",sub:"Your sent emails will appear here"})
+              :history.slice().reverse().map((h,i)=>React.createElement("div",{key:i,style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px"}},
+                React.createElement("div",{style:{fontSize:"12.5px",fontWeight:500}},h.role||"Unknown"),
+                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,marginTop:2}},h.company||""),
+                React.createElement("div",{style:{fontSize:"11px",color:T.textDim,marginTop:4,fontFamily:T.mono}},(h.emails||[]).length+" emails · "+(h.sent_at||"").slice(0,10))
+              ))
+          )
+        )
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB: TARGETED SEARCH & RECRUITER LEADS + SMART ASSIST
+    // ═══════════════════════════════════════════════════════════════════
+    function TargetedSearchTab({running}){
+      const [leads,setLeads]=useState([]);
+      const [targeted,setTargeted]=useState([]);
+      const [loading,setLoading]=useState(true);
+      const [assistUrl,setAssistUrl]=useState("");
+      const [assistCompany,setAssistCompany]=useState("");
+      const [assistRole,setAssistRole]=useState("");
+      const [launching,setLaunching]=useState(false);
+      const [subTab,setSubTab]=useState("run"); // default to run control panel
+
+      // Run inputs
+      const [runSkills,setRunSkills]=useState("");
+      const [runLocation,setRunLocation]=useState("");
+      const [runCompany,setRunCompany]=useState("");
+      const [runMaxApps,setRunMaxApps]=useState(15);
+      const [runHeadless,setRunHeadless]=useState(true);
+      const [runningMode,setRunningMode]=useState(""); // "targeted", "recruiter", ""
+
+      useEffect(()=>{
+        const fetchData=()=>{
+          Promise.all([
+            fetch("/api/recruiter_leads").then(r=>r.json()).catch(()=>({leads:[]})),
+            fetch("/api/targeted_results").then(r=>r.json()).catch(()=>[])
+          ]).then(([ld,tr])=>{
+            setLeads(ld.leads||[]);setTargeted(tr||[]);setLoading(false);
+          });
+        };
+        fetchData();
+        const iv=setInterval(fetchData,12000);
+        return()=>clearInterval(iv);
+      },[]);
+
+      const launchAssist=(url,company,role)=>{
+        if(!url){toast("URL is required","warn");return}
+        setLaunching(true);
+        fetch("/api/assist_apply",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,company:company||"Company",role:role||"Role"})})
+          .then(r=>r.json()).then(d=>{
+            if(d.ok){
+              toast(d.message||"Assist launched!","success");
+            } else {
+              toast(d.error||"Failed to launch assist","error");
+            }
+          }).catch(()=>toast("Failed to launch assist","error")).finally(()=>setLaunching(false));
+      };
+
+      const handleRun=(mode)=>{
+        setRunningMode(mode);
+        fetch("/api/run",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            target: mode === "targeted" ? "targeted" : "recruiter_posts",
+            headless: runHeadless,
+            max_applications: runMaxApps,
+            company: runCompany,
+            skills: runSkills,
+            location: runLocation
+          })
+        }).then(r=>r.json()).then(d=>{
+          if(d.error){
+            toast(d.error,"error");
+          } else {
+            toast("🚀 Started " + (mode === "targeted" ? "Targeted Search" : "Recruiter Lead Scraper") + "! Check Command Center for live logs.","success");
+          }
+        }).catch(()=>toast("Failed to start bot","error")).finally(()=>setRunningMode(""));
+      };
+
+      return React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:14}},
+        // Sub-tabs
+        React.createElement("div",{style:{display:"flex",gap:4,background:T.surface2,borderRadius:10,padding:3,border:`1px solid ${T.border}`,width:"fit-content"}},
+          [{id:"run",icon:"🚀",label:"Run Scrapers"},{id:"leads",icon:"🔗",label:"Recruiter Leads"},{id:"targeted",icon:"🎯",label:"Targeted Results"},{id:"assist",icon:"🤖",label:"Smart Assist"}].map(st=>
+            React.createElement("button",{key:st.id,onClick:()=>setSubTab(st.id),style:{background:subTab===st.id?T.accentDim:"transparent",border:"none",borderRadius:8,padding:"8px 16px",color:subTab===st.id?T.accent:T.textMuted,fontSize:"12.5px",fontWeight:600,cursor:"pointer",fontFamily:T.sans,display:"flex",alignItems:"center",gap:6}},st.icon+" "+st.label)
+          )
+        ),
+
+        // ─── Run Scrapers Sub-Tab ───
+        subTab==="run"&&React.createElement(React.Fragment,null,
+          React.createElement("div",{style:{background:T.accentDim,border:`1px solid ${T.accent}33`,borderRadius:10,padding:"10px 16px",fontSize:"12px",color:T.accent}},"🎯 Run Targeted Search or Recruiter Scraper to harvest jobs and recruiter leads."),
+          React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"18px",maxWidth:500,display:"flex",flexDirection:"column",gap:12}},
+            React.createElement("div",{style:{fontSize:"14px",fontWeight:600}},"🚀 Launch Scraper Bots"),
+            
+            React.createElement("div",null,
+              React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}},"Target Skills / Role"),
+              React.createElement("input",{placeholder:"Data Engineer, Python (defaults to profile skills)",value:runSkills,onChange:e=>setRunSkills(e.target.value),style:inputS})
+            ),
+            
+            React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
+              React.createElement("div",null,
+                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}},"Target Location"),
+                React.createElement("input",{placeholder:"Remote, Pune (defaults to profile location)",value:runLocation,onChange:e=>setRunLocation(e.target.value),style:inputS})
+              ),
+              React.createElement("div",null,
+                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}},"Target Company (Optional)"),
+                React.createElement("input",{placeholder:"e.g. PwC, Google",value:runCompany,onChange:e=>setRunCompany(e.target.value),style:inputS})
+              )
+            ),
+            
+            React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,alignItems:"center"}},
+              React.createElement("div",null,
+                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}},"Max Scraped Listings"),
+                React.createElement("input",{type:"number",value:runMaxApps,min:1,onChange:e=>setRunMaxApps(parseInt(e.target.value)||15),style:inputS})
+              ),
+              React.createElement("label",{style:{display:"flex",alignItems:"center",gap:8,fontSize:"13px",color:T.textDim,cursor:"pointer",marginTop:16}},
+                React.createElement("input",{type:"checkbox",checked:runHeadless,onChange:e=>setRunHeadless(e.target.checked)}),"Headless mode"
+              )
+            ),
+            
+            React.createElement("div",{style:{display:"flex",gap:10,marginTop:10}},
+              React.createElement("button",{className:"btn-glow",onClick:()=>handleRun("targeted"),disabled:!!runningMode,style:{...btn(T.accent,true),flex:1,justifyContent:"center",padding:"11px",fontSize:"13px",opacity:runningMode ? 0.5 : 1}},runningMode==="targeted"?"⏳ Launching...":"🎯 Targeted Search"),
+              React.createElement("button",{className:"btn-glow",onClick:()=>handleRun("recruiter"),disabled:!!runningMode,style:{...btn(T.blue,true),flex:1,justifyContent:"center",padding:"11px",fontSize:"13px",opacity:runningMode ? 0.5 : 1}},runningMode==="recruiter"?"⏳ Launching...":"🔗 Recruiter Scraper")
+            ),
+            running&&React.createElement("div",{style:{display:"flex",alignItems:"center",gap:8,marginTop:6}},
+              React.createElement("div",{style:{fontSize:"11px",color:T.amber,fontWeight:500,flex:1}},"⏳ A bot session is running. It will auto-clear when done."),
+              React.createElement("button",{onClick:()=>{fetch("/api/force_stop",{method:"POST"}).then(r=>r.json()).then(()=>toast("Force stopped","warn")).catch(()=>{})},style:{...btn(T.coral),padding:"4px 10px",fontSize:"10px",flexShrink:0}},"⛔ Force Stop")
+            )
+          )
+        ),
+
+        // ─── Recruiter Leads ───
+        subTab==="leads"&&React.createElement(React.Fragment,null,
+          React.createElement("div",{style:{background:T.blueDim,border:"1px solid rgba(96,165,250,.2)",borderRadius:10,padding:"10px 16px",fontSize:"12px",color:T.blue}},"🔗 Recruiter form links scraped from LinkedIn posts. Click 'Assist' to open with Copilot overlay."),
+          loading?React.createElement("div",{className:"skeleton",style:{height:200}}):
+          leads.length===0?React.createElement(EmptyState,{icon:"🔗",title:"No recruiter leads yet",sub:"Run the LinkedIn scraper to collect recruiter form links"}):
+          React.createElement("div",{className:"scrollable",style:{display:"flex",flexDirection:"column",gap:6,maxHeight:500}},
+            leads.map((l,i)=>React.createElement("div",{key:i,className:"job-card",style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}},
+              React.createElement("div",{style:{flex:1,minWidth:0}},
+                React.createElement("div",{style:{fontSize:"13px",fontWeight:500,color:T.text}},l.company||"Unknown"),
+                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},l.snippet||l.link),
+                React.createElement("div",{style:{display:"flex",gap:6,marginTop:4}},
+                  React.createElement("span",{style:{fontSize:"9.5px",background:T.cyanDim,color:T.cyan,padding:"1px 6px",borderRadius:3}},l.type||"Form"),
+                  l.date&&React.createElement("span",{style:{fontSize:"10px",color:T.textMuted}},l.date)
+                )
+              ),
+              React.createElement("div",{style:{display:"flex",gap:6,flexShrink:0}},
+                React.createElement("a",{href:l.link,target:"_blank",rel:"noopener",style:{...btn(T.blue),padding:"5px 10px",fontSize:"11px",textDecoration:"none"}},"Open"),
+                React.createElement("button",{onClick:()=>launchAssist(l.link,l.company,""),disabled:launching,style:{...btn(T.accent),padding:"5px 10px",fontSize:"11px"}},"🤖 Assist")
+              )
+            ))
+          )
+        ),
+
+        // ─── Targeted Results ───
+        subTab==="targeted"&&React.createElement(React.Fragment,null,
+          React.createElement("div",{style:{background:T.amberDim,border:"1px solid rgba(255,184,48,.2)",borderRadius:10,padding:"10px 16px",fontSize:"12px",color:T.amber}},"🎯 Jobs found by targeted search across company career pages."),
+          loading?React.createElement("div",{className:"skeleton",style:{height:200}}):
+          targeted.length===0?React.createElement(EmptyState,{icon:"🎯",title:"No targeted results yet",sub:"Run a targeted search from the Command Center"}):
+          React.createElement("div",{className:"scrollable",style:{display:"flex",flexDirection:"column",gap:6,maxHeight:500}},
+            targeted.map((t,i)=>{
+              const score=parseInt(String(t.score||"0"))||0;
+              return React.createElement("div",{key:i,className:"job-card",style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px",display:"flex",gap:12,alignItems:"center"}},
+                React.createElement(ScoreRing,{score,size:36}),
+                React.createElement("div",{style:{flex:1,minWidth:0}},
+                  React.createElement("div",{style:{fontSize:"13px",fontWeight:500}},t.title||"Unknown"),
+                  React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,marginTop:2}},(t.company||"")+" · "+(t.portal||t.source||"")),
+                  (t.matched_skills||[]).length>0&&React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:3,marginTop:4}},(t.matched_skills||[]).slice(0,5).map((s,si)=>React.createElement("span",{key:si,style:{fontSize:"9.5px",background:T.accentDim,color:T.accent,padding:"1px 5px",borderRadius:3,fontFamily:T.mono}},s)))
+                ),
+                React.createElement("div",{style:{display:"flex",gap:6,flexShrink:0}},
+                  t.url&&React.createElement("a",{href:t.url,target:"_blank",rel:"noopener",style:{...btn(T.blue),padding:"5px 10px",fontSize:"11px",textDecoration:"none"}},"Open"),
+                  React.createElement("button",{onClick:()=>launchAssist(t.url||"",(t.company||""),(t.title||"")),disabled:launching,style:{...btn(T.accent),padding:"5px 10px",fontSize:"11px"}},"🤖 Assist")
+                )
+              )
+            })
+          )
+        ),
+
+        // ─── Smart Assist ───
+        subTab==="assist"&&React.createElement(React.Fragment,null,
+          React.createElement("div",{style:{background:T.accentDim,border:`1px solid ${T.accent}33`,borderRadius:10,padding:"10px 16px",fontSize:"12px",color:T.accent}},"🤖 Smart Assist opens a Chrome window with a Copilot overlay. It auto-fills forms, uploads resume, and clicks Next — you just supervise."),
+          React.createElement("div",{style:{background:"rgba(255,184,48,0.08)",border:"1px solid rgba(255,184,48,0.2)",borderRadius:10,padding:"10px 16px",fontSize:"11.5px",color:T.amber,lineHeight:1.5,marginTop:6}},"⚠️ Important: Smart Assist requires a VISIBLE Chrome browser. Make sure the server is running from your terminal (Start_Job_Bot_Portal.bat), NOT from a background agent session."),
+          React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"18px",maxWidth:500,marginTop:6}},
+            React.createElement("div",{style:{fontSize:"14px",fontWeight:600,marginBottom:14}},"🤖 Launch Smart Assist"),
+            React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}},"Application URL"),
+            React.createElement("input",{placeholder:"https://careers.google.com/jobs/...",value:assistUrl,onChange:e=>setAssistUrl(e.target.value),style:{...inputS,marginBottom:10}}),
+            React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}},
+              React.createElement("div",null,
+                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}},"Company"),
+                React.createElement("input",{placeholder:"Google",value:assistCompany,onChange:e=>setAssistCompany(e.target.value),style:inputS})
+              ),
+              React.createElement("div",null,
+                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}},"Role"),
+                React.createElement("input",{placeholder:"Data Engineer",value:assistRole,onChange:e=>setAssistRole(e.target.value),style:inputS})
+              )
+            ),
+            React.createElement("button",{className:"btn-glow",onClick:()=>launchAssist(assistUrl,assistCompany,assistRole),disabled:launching||!assistUrl.trim(),style:{...btn(T.accent,true),width:"100%",justifyContent:"center",padding:"11px",fontSize:"13.5px",opacity:(launching||!assistUrl.trim()) ? 0.5 : 1}},launching?"🚀 Launching...":"🤖 Launch Assist Browser"),
+            React.createElement("div",{style:{marginTop:14,fontSize:"11.5px",color:T.textDim,lineHeight:1.6}},
+              "Once launched, a Chrome window opens with the Copilot overlay:",
+              React.createElement("ul",{style:{margin:"8px 0 0 16px",padding:0}},
+                React.createElement("li",null,"⚡ Auto-Fill — fills all text, dropdowns, radios, checkboxes using your profile + QA store"),
+                React.createElement("li",null,"📤 Upload Resume — finds file input and uploads your active resume PDF"),
+                React.createElement("li",null,"⏭️ Next Step — clicks Next/Continue/Submit automatically"),
+                React.createElement("li",null,"📝 Learning — your manual corrections are saved to QA store for future auto-fill")
+              )
+            )
+          )
+        )
+      );
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB: PROFILES MANAGEMENT (Naukri Multi-Account & Resumes)
+    // ═══════════════════════════════════════════════════════════════════
+    function ProfilesTab({setConfirm}){
+      const [profiles,setProfiles]=useState([]);
+      const [activeProfile,setActiveProfile]=useState("default");
+      const [loading,setLoading]=useState(true);
+      const [isEditing,setIsEditing]=useState(false);
+      const [editingId,setEditingId]=useState("");
+      
+      // New profile form states
+      const [name,setName]=useState("");
+      const [candidateName,setCandidateName]=useState("");
+      const [phone,setPhone]=useState("");
+      const [city,setCity]=useState("");
+      const [naukriEmail,setNaukriEmail]=useState("");
+      const [naukriPassword,setNaukriPassword]=useState("");
+      const [linkedinEmail,setLinkedinEmail]=useState("");
+      const [linkedinPassword,setLinkedinPassword]=useState("");
+      const [resumeFile,setResumeFile]=useState(null);
+      const [resumePath,setResumePath]=useState("");
+      const [linkedinResumeFile,setLinkedinResumeFile]=useState(null);
+      const [linkedinResumePath,setLinkedinResumePath]=useState("");
+      const [linkedinResumeName,setLinkedinResumeName]=useState("");
+      const [imapEmail,setImapEmail]=useState("");
+      const [imapPassword,setImapPassword]=useState("");
+      const [skills,setSkills]=useState("Data Engineer, Python");
+      const [locations,setLocations]=useState("Remote, Pune");
+      const [experienceYears,setExperienceYears]=useState("5");
+      const [noticePeriod,setNoticePeriod]=useState("15");
+      const [currentCtc,setCurrentCtc]=useState("12");
+      const [expectedCtc,setExpectedCtc]=useState("18");
+      const [coverLetter,setCoverLetter]=useState("");
+      
+      const refresh=()=>{
+        setLoading(true);
+        Promise.all([
+          fetch("/api/profiles/list").then(r=>r.json()).catch(()=>[]),
+          fetch("/api/profile").then(r=>r.json()).catch(()=>({}))
+        ]).then(([list,active])=>{
+          setProfiles(list||[]);
+          if(active&&active.profile){
+            setActiveProfile(active.profile.ACTIVE_PROFILE_NAME||"default");
+          }
+          setLoading(false);
+        });
+      };
+
+      useEffect(()=>{refresh();},[]);
+
+      const selectAndLoadProfile = (profile) => {
+        setEditingId(profile.id);
+        
+        const d = profile.data || {};
+        const p = d.profile || {};
+        
+        setName(d.name || profile.name || "");
+        
+        const fname = p.first_name || "";
+        const lname = p.last_name || "";
+        setCandidateName((fname + " " + lname).trim());
+        
+        setPhone(p.phone || "");
+        setCity(p.city || "");
+        setNaukriEmail(p.naukri_email || "");
+        setNaukriPassword(p.naukri_password || "");
+        setLinkedinEmail(p.linkedin_email || "");
+        setLinkedinPassword(p.linkedin_password || "");
+        setResumePath(p.resume_path || "");
+        setLinkedinResumePath(p.linkedin_resume_path || "");
+        setLinkedinResumeName(p.linkedin_resume_name || "");
+        setImapEmail(p.imap_email || "");
+        setImapPassword(p.imap_password || "");
+        setSkills((d.skills || []).join(", "));
+        setLocations((d.locations || []).join(", "));
+        setExperienceYears(p.total_experience_years || "");
+        setNoticePeriod(p.notice_period || "");
+        setCurrentCtc(p.current_ctc || "");
+        setExpectedCtc(p.expected_ctc || "");
+        setCoverLetter(d.cover_letter || "");
+        setIsEditing(true);
+      };
+
+      const handleResumeChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setResumeFile(file);
+        
+        const formData = new FormData();
+        formData.append("resume", file);
+        toast("Uploading and parsing resume PDF...", "info");
+        
+        fetch("/api/profiles/upload-resume", {
+          method: "POST",
+          body: formData
+        })
+        .then(r=>r.json())
+        .then(res=>{
+          if(res.error){
+            toast("Failed to parse resume: " + res.error, "error");
+          } else {
+            toast("Resume parsed successfully! Form pre-filled.", "success");
+            setResumePath(res.path);
+            setResumeFile(null); // Clear file to prevent duplicate upload on save
+            
+            const info = res.candidate_info || {};
+            if (info.name) setCandidateName(info.name);
+            if (info.email) {
+              setNaukriEmail(info.email);
+              setLinkedinEmail(info.email);
+            }
+            if (info.phone) setPhone(info.phone);
+            if (info.city) setCity(info.city);
+            if (info.skills && info.skills.length > 0) setSkills(info.skills.join(", "));
+            if (info.experience_years) setExperienceYears(info.experience_years);
+          }
+        })
+        .catch(()=>{
+          toast("Failed to upload and parse resume", "error");
+        });
+      };
+
+      const handleLinkedinResumeChange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setLinkedinResumeFile(file);
+        
+        const formData = new FormData();
+        formData.append("resume", file);
+        toast("Uploading LinkedIn resume PDF...", "info");
+        
+        fetch("/api/profiles/upload-resume", {
+          method: "POST",
+          body: formData
+        })
+        .then(r=>r.json())
+        .then(res=>{
+          if(res.error){
+            toast("Failed to upload LinkedIn resume: " + res.error, "error");
+          } else {
+            toast("LinkedIn resume uploaded successfully!", "success");
+            setLinkedinResumePath(res.path);
+            setLinkedinResumeName(file.name); // Store filename for pre-uploaded matching
+            setLinkedinResumeFile(null); // Clear file to prevent duplicate upload on save
+          }
+        })
+        .catch(()=>{
+          toast("Failed to upload LinkedIn resume", "error");
+        });
+      };
+
+      const handleClear = () => {
+        setName("");
+        setEditingId("");
+        setCandidateName("");
+        setPhone("");
+        setCity("");
+        setNaukriEmail("");
+        setNaukriPassword("");
+        setLinkedinEmail("");
+        setLinkedinPassword("");
+        setResumeFile(null);
+        setResumePath("");
+        setLinkedinResumeFile(null);
+        setLinkedinResumePath("");
+        setLinkedinResumeName("");
+        setImapEmail("");
+        setImapPassword("");
+        setSkills("Data Engineer, Python");
+        setLocations("Remote, Pune");
+        setExperienceYears("5");
+        setNoticePeriod("15");
+        setCurrentCtc("12");
+        setExpectedCtc("18");
+        setCoverLetter("");
+        setIsEditing(false);
+      };
+
+      const handleSave=()=>{
+        if(!name.trim()){toast("Profile name is required","warn");return}
+        
+        const saveProfileData=(finalNaukriPath, finalLinkedinPath)=>{
+          const names = candidateName.trim().split(" ");
+          const firstName = names[0] || name.split(" ")[0] || "Candidate";
+          const lastName = names.slice(1).join(" ") || "";
+          
+          const data={
+            name,
+            old_id: editingId,
+            profile:{
+              first_name: firstName,
+              last_name: lastName,
+              naukri_email: naukriEmail,
+              naukri_password: naukriPassword,
+              linkedin_email: linkedinEmail,
+              linkedin_password: linkedinPassword,
+              resume_path: finalNaukriPath,
+              linkedin_resume_path: finalLinkedinPath,
+              linkedin_resume_name: linkedinResumeName,
+              imap_email: imapEmail,
+              imap_password: imapPassword,
+              email: naukriEmail || linkedinEmail || "",
+              phone: phone,
+              city: city,
+              total_experience_years: experienceYears,
+              notice_period: noticePeriod,
+              current_ctc: currentCtc,
+              expected_ctc: expectedCtc
+            },
+            skills: skills.split(/[,\n;]+/).map(s=>s.trim()).filter(s=>s),
+            locations: locations.split(/[,\n;]+/).map(s=>s.trim()).filter(s=>s),
+            daily_limit: 50,
+            min_match_score: 30,
+            auto_threshold: 75,
+            review_threshold: 55,
+            cover_letter: coverLetter
+          };
+          
+          fetch("/api/profiles/save",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify(data)
+          }).then(r=>r.json()).then(d=>{
+            if (d.error) {
+              toast(d.error, "error");
+            } else {
+              toast(isEditing ? "Profile updated successfully!" : "Profile created successfully!","success");
+              if (!isEditing) {
+                handleClear();
+              }
+              refresh();
+            }
+          }).catch(()=>toast("Failed to save profile","error"));
+        };
+
+        const uploadResume = (file, callback) => {
+          if (!file) { callback(null); return; }
+          const formData = new FormData();
+          formData.append("resume", file);
+          fetch("/api/profiles/upload-resume", {
+            method: "POST",
+            body: formData
+          }).then(r=>r.json()).then(res=>{
+            if (res.error) {
+              toast("Resume upload failed: " + res.error, "error");
+              callback(null);
+            } else {
+              callback(res.path);
+            }
+          }).catch(()=>{
+            toast("Failed to upload resume","error");
+            callback(null);
+          });
+        };
+
+        toast("Processing profile save...","info");
+        uploadResume(resumeFile, (naukriPathUploaded) => {
+          const finalNaukriPath = naukriPathUploaded || resumePath;
+          uploadResume(linkedinResumeFile, (linkedinPathUploaded) => {
+            const finalLinkedinPath = linkedinPathUploaded || linkedinResumePath;
+            saveProfileData(finalNaukriPath, finalLinkedinPath);
+          });
+        });
+      };
+
+      const handleSelect=(id)=>{
+        fetch("/api/profiles/select",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({id})
+        }).then(r=>r.json()).then(d=>{
+          if(d.error){
+            toast(d.error,"error");
+          } else {
+            setActiveProfile(id);
+            toast("Active profile switched!","success");
+            refresh();
+          }
+        }).catch(()=>toast("Failed to switch profile","error"));
+      };
+
+      const handleDeleteProfile=(id)=>{
+        setConfirm({
+          title: "Delete Profile?",
+          msg: "Are you sure you want to permanently delete this profile template?",
+          onConfirm: () => {
+            fetch("/api/profiles/delete", {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({id})
+            })
+            .then(r=>r.json())
+            .then(res=>{
+              if(res.error){
+                toast(res.error, "error");
+              } else {
+                toast("Profile deleted successfully!", "success");
+                if (editingId === id) {
+                  handleClear();
+                }
+                refresh();
+              }
+            })
+            .catch(()=>toast("Failed to delete profile", "error"));
+            setConfirm(null);
+          }
+        });
+      };
+
+      return React.createElement("div",{style:{display:"flex",gap:16,height:"100%"}},
+        // Left: Profile List
+        React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column",gap:14}},
+          React.createElement("div",{style:{fontSize:"15px",fontWeight:600}},"👤 Account Profiles Manager"),
+          React.createElement("div",{style:{fontSize:"12px",color:T.textMuted,marginTop:-8}},"Activate a profile, load it for editing, or create a new one."),
+          
+          loading?React.createElement("div",{className:"skeleton",style:{height:120}}):
+          React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}},
+            profiles.map(p=>{
+              const isActive=activeProfile===p.id;
+              return React.createElement("div",{key:p.id,style:{background:T.surface2,border:`1px solid ${isActive?T.accent+"88":T.border}`,borderRadius:12,padding:"14px 16px",display:"flex",flexDirection:"column",gap:8,transition:"all 0.2s"}},
+                React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                  React.createElement("div",{style:{fontSize:"14px",fontWeight:600,color:isActive?T.accent:T.text}},p.name),
+                  isActive&&React.createElement("span",{style:{fontSize:"9.5px",background:T.accent,color:"#000",padding:"2px 7px",borderRadius:10,fontWeight:700,letterSpacing:".02em"}},"ACTIVE")
+                ),
+                React.createElement("div",{style:{fontSize:"11.5px",color:T.textMuted,display:"flex",flexDirection:"column",gap:3,marginTop:4}},
+                  React.createElement("div",null,"👤 "+((p.data?.profile?.first_name || "") + " " + (p.data?.profile?.last_name || "")).trim()),
+                  React.createElement("div",null,"📧 "+(p.naukri_email||p.data?.profile?.linkedin_email||"No email linked")),
+                  React.createElement("div",{style:{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},"📎 "+(p.resume_path ? p.resume_path.split(/[\\/]/).pop() : "No default resume"))
+                ),
+                React.createElement("div",{style:{display:"flex",gap:6,marginTop:8,borderTop:`1px solid ${T.border}`,paddingTop:8}},
+                  !isActive&&React.createElement("button",{onClick:()=>handleSelect(p.id),style:{...btn(T.accent),padding:"4px 8px",fontSize:"10.5px"}},"⚡ Activate"),
+                  React.createElement("button",{onClick:()=>selectAndLoadProfile(p),style:{...btn(T.blue),padding:"4px 8px",fontSize:"10.5px"}},"✏️ Edit"),
+                  p.id!=="default"&&React.createElement("button",{onClick:()=>handleDeleteProfile(p.id),style:{...btn(T.coral),padding:"4px 8px",fontSize:"10.5px"}},"🗑️ Delete")
+                )
+              );
+            }),
+            profiles.length===0&&React.createElement("div",{style:{gridColumn:"1 / -1"}},
+              React.createElement(EmptyState,{icon:"👤",title:"No custom profiles yet",sub:"Create a profile on the right to link multiple resumes/accounts."})
+            )
+          )
+        ),
+        // Right: Profile Form
+        React.createElement("div",{style:{width:360,flexShrink:0,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:14,padding:16,display:"flex",flexDirection:"column",gap:12,maxHeight:"calc(100vh - 120px)",overflowY:"auto"}},
+          React.createElement("div",{style:{fontSize:"13px",fontWeight:600,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+            isEditing ? "👤 Edit Profile: " + name : "👤 Add New Profile",
+            isEditing && React.createElement("button",{onClick:handleClear,style:{background:"transparent",border:"none",color:T.accent,fontSize:"11px",cursor:"pointer",fontWeight:600}},"Clear / New")
+          ),
+          
+          React.createElement("div",{style:{fontSize:"10.5px",fontWeight:700,color:T.accent,marginTop:4,borderBottom:`1px solid ${T.border}`,paddingBottom:2}},"👤 IDENTITY & CONTACT"),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Profile Name"),
+            React.createElement("input",{placeholder:"e.g., Senior DE - Naukri A",value:name,onChange:e=>setName(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Candidate Full Name"),
+            React.createElement("input",{placeholder:"e.g., Pratik Pawar",value:candidateName,onChange:e=>setCandidateName(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Phone Number"),
+            React.createElement("input",{placeholder:"e.g., 9272469578",value:phone,onChange:e=>setPhone(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"City"),
+            React.createElement("input",{placeholder:"e.g., Pune",value:city,onChange:e=>setCity(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"10px",fontWeight:600,color:T.accent,marginBottom:4}},"Naukri Resume PDF"),
+            React.createElement("input",{type:"file",accept:".pdf",onChange:handleResumeChange,style:{fontSize:"11px",color:T.textDim,marginTop:2}}),
+            React.createElement("div",{style:{fontSize:"9px",color:T.textMuted,marginTop:4}},"Or type manual path below:"),
+            React.createElement("input",{placeholder:"C:\\path\\to\\naukri_resume.pdf",value:resumePath,onChange:e=>setResumePath(e.target.value),style:{...inputS,marginTop:2}})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"10px",fontWeight:600,color:T.accent,marginBottom:4}},"LinkedIn Resume (Optional)"),
+            React.createElement("input",{type:"file",accept:".pdf",onChange:handleLinkedinResumeChange,style:{fontSize:"11px",color:T.textDim,marginTop:2}}),
+            React.createElement("div",{style:{fontSize:"9px",color:T.textMuted,marginTop:4}},"Or type manual path below:"),
+            React.createElement("input",{placeholder:"C:\\path\\to\\linkedin_resume.pdf",value:linkedinResumePath,onChange:e=>setLinkedinResumePath(e.target.value),style:{...inputS,marginTop:2}})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"LinkedIn Saved Resume Name (for pre-uploaded selection)"),
+            React.createElement("input",{placeholder:"e.g., My_LinkedIn_Resume.pdf",value:linkedinResumeName,onChange:e=>setLinkedinResumeName(e.target.value),style:inputS})
+          ),
+          
+          React.createElement("div",{style:{fontSize:"10.5px",fontWeight:700,color:T.accent,marginTop:6,borderBottom:`1px solid ${T.border}`,paddingBottom:2}},"🔑 PORTAL CREDENTIALS"),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Naukri Email"),
+            React.createElement("input",{placeholder:"naukri@email.com",value:naukriEmail,onChange:e=>setNaukriEmail(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Naukri Password"),
+            React.createElement("input",{type:"password",placeholder:"••••••••",value:naukriPassword,onChange:e=>setNaukriPassword(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"LinkedIn Email"),
+            React.createElement("input",{placeholder:"linkedin@email.com",value:linkedinEmail,onChange:e=>setLinkedinEmail(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"LinkedIn Password"),
+            React.createElement("input",{type:"password",placeholder:"••••••••",value:linkedinPassword,onChange:e=>setLinkedinPassword(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Outreach IMAP Email (Optional)"),
+            React.createElement("input",{placeholder:"outreach@email.com",value:imapEmail,onChange:e=>setImapEmail(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Outreach IMAP Password (Optional App Password)"),
+            React.createElement("input",{type:"password",placeholder:"••••••••",value:imapPassword,onChange:e=>setImapPassword(e.target.value),style:inputS})
+          ),
+          
+          React.createElement("div",{style:{fontSize:"10.5px",fontWeight:700,color:T.accent,marginTop:6,borderBottom:`1px solid ${T.border}`,paddingBottom:2}},"💼 EXPERIENCE & SPECS"),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Total Experience (Years)"),
+            React.createElement("input",{type:"number",step:"0.1",placeholder:"e.g., 4.6",value:experienceYears,onChange:e=>setExperienceYears(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Notice Period (Days)"),
+            React.createElement("input",{type:"number",placeholder:"e.g., 15",value:noticePeriod,onChange:e=>setNoticePeriod(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Current CTC (LPA)"),
+            React.createElement("input",{type:"number",placeholder:"e.g., 12",value:currentCtc,onChange:e=>setCurrentCtc(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Expected CTC (LPA)"),
+            React.createElement("input",{type:"number",placeholder:"e.g., 18",value:expectedCtc,onChange:e=>setExpectedCtc(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Target Skills (comma-separated)"),
+            React.createElement("input",{value:skills,onChange:e=>setSkills(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Target Locations (comma-separated)"),
+            React.createElement("input",{value:locations,onChange:e=>setLocations(e.target.value),style:inputS})
+          ),
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"9.5px",color:T.textMuted,marginBottom:2}},"Cover Letter Template"),
+            React.createElement("textarea",{rows:4,placeholder:"Dear Hiring Manager...",value:coverLetter,onChange:e=>setCoverLetter(e.target.value),style:{...inputS,fontFamily:"inherit",resize:"vertical"}})
+          ),
+          
+          React.createElement("button",{className:"btn-glow",onClick:handleSave,style:{...btn(T.accent,true),justifyContent:"center",padding:10,marginTop:6,marginBottom:12,flexShrink:0}}, isEditing ? "💾 Update Profile" : "💾 Create Profile")
+        )
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // TAB: SETTINGS
+    // ═══════════════════════════════════════════════════════════════════
+    function SettingsTab({config,setConfig}){
+      const [saving,setSaving]=useState(false);
+      const save=(updated)=>{
+        setSaving(true);
+        fetch("/api/profile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(updated)})
+          .then(()=>toast("Settings saved","success")).catch(()=>toast("Save failed","error")).finally(()=>setSaving(false));
+      };
+      const toggle=(key)=>{const u={...config,[key]:!config[key]};setConfig(u);save(u)};
+      const update=(key,val)=>{const u={...config,[key]:val};setConfig(u)};
+
+      function SettingRow({label,desc,children}){
+        return React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 0",borderBottom:`1px solid ${T.border}`}},
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:"13.5px",fontWeight:500}},label),
+            desc&&React.createElement("div",{style:{fontSize:"11.5px",color:T.textMuted,marginTop:2}},desc)
+          ),
+          children
+        );
+      }
+
+      function Toggle({on,onClick}){
+        return React.createElement("div",{onClick,className:"toggle-switch",style:{width:38,height:22,borderRadius:11,background:on?T.accent:"rgba(255,255,255,.1)",position:"relative",cursor:"pointer",flexShrink:0}},
+          React.createElement("div",{style:{position:"absolute",top:3,left:on?19:3,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left .2s"}})
+        );
+      }
+
+      return React.createElement("div",{style:{maxWidth:680,margin:"0 auto"}},
+        React.createElement("div",{style:{fontSize:"18px",fontWeight:600,marginBottom:4}},"⚙️ Bot Settings"),
+        React.createElement("div",{style:{fontSize:"12.5px",color:T.textMuted,marginBottom:20}},"Configure search, scoring, and bot behavior"),
+
+        React.createElement("div",{style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"4px 18px"}},
+          React.createElement(SettingRow,{label:"Headless mode",desc:"Run browser in background (no visible window)"},React.createElement(Toggle,{on:config.headless,onClick:()=>toggle("headless")})),
+          React.createElement(SettingRow,{label:"Daily application limit",desc:"Max applications per day across all portals"},
+            React.createElement("input",{type:"number",value:config.dailyLimit||50,min:1,max:500,onChange:e=>update("dailyLimit",parseInt(e.target.value)||50),onBlur:()=>save(config),style:{...inputS,width:80,textAlign:"center"}})
+          ),
+          React.createElement(SettingRow,{label:"Auto-apply threshold",desc:"Score ≥ this → apply automatically"},
+            React.createElement("input",{type:"number",value:config.autoThreshold||75,min:0,max:100,onChange:e=>update("autoThreshold",parseInt(e.target.value)||75),onBlur:()=>save(config),style:{...inputS,width:80,textAlign:"center"}})
+          ),
+          React.createElement(SettingRow,{label:"Review threshold",desc:"Score ≥ this but < auto → queue for review"},
+            React.createElement("input",{type:"number",value:config.reviewThreshold||55,min:0,max:100,onChange:e=>update("reviewThreshold",parseInt(e.target.value)||55),onBlur:()=>save(config),style:{...inputS,width:80,textAlign:"center"}})
+          )
+        )
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // MAIN APP
+    // ═══════════════════════════════════════════════════════════════════
+    function App(){
+      const [running,setRunning]=useState(false);
+      const [tab,setTab]=useState("command");
+      const [jobs,setJobs]=useState([]);
+      const [logs,setLogs]=useState([]);
+      const [uptime,setUptime]=useState(0);
+      const [config,setConfig]=useState({headless:true,dailyLimit:50,autoThreshold:75,reviewThreshold:55});
+      const [todayStats,setTodayStats]=useState({});
+      const [confirm,setConfirm]=useState(null);
+
+      const logsEndRef=useRef(null);
+      const timerRef=useRef(null);
+
+      const addLog=useCallback(log=>{setLogs(p=>[...p,log].slice(-400))},[]);
+
+      // Fetch data
+      useEffect(()=>{
+        fetch("/api/applications").then(r=>r.json()).then(d=>setJobs(d||[])).catch(()=>{});
+        fetch("/api/profile").then(r=>r.json()).then(d=>{
+          if(d&&d.profile)setConfig(c=>({...c,headless:d.profile.HEADLESS_DEFAULT!==undefined?d.profile.HEADLESS_DEFAULT:true,dailyLimit:d.daily_limit||50,autoThreshold:d.auto_threshold||75,reviewThreshold:d.review_threshold||55}));
+        }).catch(()=>{});
+        const interval=setInterval(()=>{
+          fetch("/api/stats").then(r=>r.json()).then(d=>{setRunning(d.running);setTodayStats(d)}).catch(()=>{});
+          fetch("/api/applications").then(r=>r.json()).then(d=>setJobs(d||[])).catch(()=>{});
+        },10000);
+        return()=>clearInterval(interval);
+      },[]);
+
+      // SSE
+      useEffect(()=>{
+        let evtSrc=null;
+        try{
+          evtSrc=new EventSource("/stream");
+          evtSrc.onmessage=e=>{
+            if(!e.data||e.data.trim()==="")return;
+            try{const p=JSON.parse(e.data);addLog({id:Math.random(),time:p.time||new Date().toLocaleTimeString(),type:p.type||"info",message:p.message})}
+            catch(err){addLog({id:Math.random(),time:new Date().toLocaleTimeString(),type:"info",message:e.data})}
+          };
+        }catch(e){}
+        return()=>{if(evtSrc)evtSrc.close()};
+      },[addLog]);
+
+      const startBot=(target)=>{
+        fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:target,headless:config.headless})})
+          .then(()=>{setRunning(true);setUptime(0);toast("Bot started: "+target,"success")})
+          .catch(()=>{setRunning(true);setUptime(0);addLog({id:Math.random(),time:new Date().toLocaleTimeString(),type:"info",message:"Bot started (simulated)"})});
+      };
+
+      const stopBot=()=>{
+        setConfirm({title:"Stop Bot?",msg:"This will halt the bot at the next checkpoint.",onConfirm:()=>{
+          fetch("/api/stop",{method:"POST"}).then(()=>{setRunning(false);toast("Stop signal sent","warn")}).catch(()=>setRunning(false));
+          setConfirm(null);
+        }});
+      };
+
+      const forceStop=()=>{
+        fetch("/api/force_stop",{method:"POST"}).then(r=>r.json()).then(d=>{setRunning(false);toast(d.note||"Force stopped","warn")}).catch(()=>setRunning(false));
+      };
+
+      // Uptime
+      useEffect(()=>{
+        if(running){timerRef.current=setInterval(()=>setUptime(u=>u+1),1000)}else{clearInterval(timerRef.current)}
+        return()=>clearInterval(timerRef.current);
+      },[running]);
+
+      // Auto-scroll logs
+      useEffect(()=>{if(tab==="command"&&logsEndRef.current)logsEndRef.current.scrollIntoView({behavior:"smooth"})},[logs,tab]);
+
+      const fmtUptime=s=>`${String(Math.floor(s/3600)).padStart(2,"0")}:${String(Math.floor((s%3600)/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+      const TABS=[
+        {id:"command",icon:"⚡",label:"Command Center"},
+        {id:"jobs",icon:"📋",label:"Pipeline",badge:jobs.length},
+        {id:"search",icon:"🎯",label:"Search & Assist"},
+        {id:"profiles",icon:"👤",label:"Profiles"},
+        {id:"analytics",icon:"📊",label:"Analytics"},
+        {id:"qa",icon:"🧠",label:"Q&A"},
+        {id:"outreach",icon:"📧",label:"HR Outreach"},
+        {id:"settings",icon:"⚙️",label:"Settings"},
+      ];
+
+      return React.createElement("div",{style:{background:T.bg,minHeight:"100vh",fontFamily:T.sans,color:T.text,display:"flex",flexDirection:"column"}},
+        React.createElement(ToastContainer,null),
+        React.createElement(ConfirmDialog,{open:!!confirm,...(confirm||{}),onCancel:()=>setConfirm(null)}),
+
+        // ── HEADER ──
+        React.createElement("div",{style:{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"0 24px",display:"flex",alignItems:"center",gap:16,height:52,flexShrink:0,position:"sticky",top:0,zIndex:100}},
+          React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10}},
+            React.createElement("div",{style:{width:30,height:30,borderRadius:8,background:`linear-gradient(135deg,${T.accent}30,${T.blue}30)`,border:`1px solid ${T.accent}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}},"⬡"),
+            React.createElement("span",{style:{fontSize:15,fontWeight:700,letterSpacing:"-.01em"}},"JobBot"),
+            React.createElement("span",{style:{fontSize:10,color:T.textMuted,fontFamily:T.mono,background:T.surface2,padding:"2px 6px",borderRadius:4}},"v3.0")
+          ),
+          React.createElement("div",{style:{flex:1,display:"flex",alignItems:"center",gap:8,marginLeft:8}},
+            React.createElement(LiveDot,{active:running}),
+            React.createElement("span",{style:{fontSize:12.5,color:running?T.accent:T.textMuted,fontWeight:500}},running?"Running":"Idle"),
+            running&&React.createElement("span",{style:{fontFamily:T.mono,fontSize:11,color:T.textMuted}},fmtUptime(uptime))
+          )
+        ),
+
+        // ── BODY ──
+        React.createElement("div",{style:{display:"flex",flex:1,overflow:"hidden",height:"calc(100vh - 52px)"}},
+          // ── NAV SIDEBAR ──
+          React.createElement("div",{style:{width:200,flexShrink:0,background:T.surface,borderRight:`1px solid ${T.border}`,display:"flex",flexDirection:"column",padding:"12px 8px",gap:2}},
+            TABS.map(t=>React.createElement("button",{key:t.id,onClick:()=>setTab(t.id),className:"tab-btn",style:{background:tab===t.id?T.accentDim:"transparent",border:"none",borderRadius:8,padding:"10px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left",color:tab===t.id?T.accent:T.textDim,fontFamily:T.sans,fontSize:"12.5px",fontWeight:tab===t.id?600:400}},
+              React.createElement("span",{style:{fontSize:"14px",width:20,textAlign:"center"}},t.icon),
+              t.label,
+              t.badge!==undefined&&React.createElement("span",{style:{marginLeft:"auto",fontFamily:T.mono,fontSize:"10px",background:T.surface2,color:T.textMuted,padding:"1px 6px",borderRadius:4}},t.badge)
+            ))
+          ),
+
+          // ── MAIN CONTENT ──
+          React.createElement("div",{className:"scrollable",style:{flex:1,padding:20,background:T.bg,minHeight:0}},
+            tab==="command"&&React.createElement(CommandCenterTab,{running,jobs,logs,logsEndRef,uptime,config,onStart:startBot,onStop:stopBot,fmtUptime,todayStats}),
+            tab==="jobs"&&React.createElement(JobPipelineTab,{jobs}),
+            tab==="search"&&React.createElement(TargetedSearchTab,{running}),
+            tab==="profiles"&&React.createElement(ProfilesTab,{setConfirm}),
+            tab==="analytics"&&React.createElement(AnalyticsTab,{jobs}),
+            tab==="qa"&&React.createElement(QATab,null),
+            tab==="outreach"&&React.createElement(OutreachTab,null),
+            tab==="settings"&&React.createElement(SettingsTab,{config,setConfig})
+          )
+        )
+      );
+    }
+
+    const root=ReactDOM.createRoot(document.getElementById("root"));
+    root.render(React.createElement(App));
+    {% endraw %}
+    </script>
+</body>
+</html>
