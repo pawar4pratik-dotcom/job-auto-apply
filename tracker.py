@@ -83,6 +83,26 @@ def _ensure_file(path: str) -> None:
             csv.writer(f).writerow(HEADERS)
 
 
+def _bg_find_and_cache_recruiters(company: str) -> None:
+    """Helper to query recruiters online in a background thread and save them to SQLite."""
+    if not _db:
+        return
+    try:
+        # Check cache first
+        cached = _db.get_recruiters_by_company(company)
+        if cached:
+            return  # Already cached
+        
+        # Sourced online
+        from core.recruiter_finder import find_recruiters_online
+        found = find_recruiters_online(company)
+        if found:
+            _db.save_recruiters(company, found)
+            print(f"  [RECRUITER] Background sourced & cached {len(found)} recruiter contacts for '{company}'")
+    except Exception as e:
+        print(f"  [RECRUITER][WARN] Background sourcing failed for '{company}': {e}")
+
+
 # ── Write ─────────────────────────────────────────────────────────────────────
 
 def log_application(
@@ -147,6 +167,13 @@ def log_application(
                 )
         except Exception:
             pass  # DB failure never impacts CSV write
+
+        # ── Auto Recruiter Sourcing ───────────────────────────────────────────
+        if status in ["Applied", "Manual Needed", "Review"] and company and company.lower() != "unknown":
+            try:
+                threading.Thread(target=_bg_find_and_cache_recruiters, args=(company,), daemon=True).start()
+            except Exception as e:
+                print(f"  [WARN] Failed to trigger background recruiter sourcing: {e}")
 
         # Trigger notifications for important states
         if status in ["Applied", "Manual Needed", "Review"]:

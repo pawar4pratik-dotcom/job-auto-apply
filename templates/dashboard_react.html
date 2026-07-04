@@ -710,6 +710,36 @@
       // AI extracted info for single mode
       const [extracted,setExtracted]=useState(null);
 
+      // Search & Date filtering states for Outreach History
+      const [historySearch,setHistorySearch]=useState("");
+      const [historyDateFilter,setHistoryDateFilter]=useState("all");
+
+      const filteredHistory = useMemo(() => {
+        return history.filter(h => {
+          if (historySearch) {
+            const q = historySearch.toLowerCase();
+            const roleMatch = (h.role || "").toLowerCase().includes(q);
+            const compMatch = (h.company || "").toLowerCase().includes(q);
+            const nameMatch = (h.recruiter_name || "").toLowerCase().includes(q);
+            const emailMatch = (h.recruiter_email || "").toLowerCase().includes(q);
+            if (!roleMatch && !compMatch && !nameMatch && !emailMatch) return false;
+          }
+          if (historyDateFilter !== "all") {
+            const itemDate = (h.sent_at || h.crafted_at || h.timestamp || "").slice(0, 10);
+            if (historyDateFilter === "today") {
+              const todayStr = new Date().toLocaleDateString('en-CA');
+              if (itemDate !== todayStr) return false;
+            } else if (historyDateFilter === "yesterday") {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              const yesterdayStr = yesterday.toLocaleDateString('en-CA');
+              if (itemDate !== yesterdayStr) return false;
+            }
+          }
+          return true;
+        });
+      }, [history, historySearch, historyDateFilter]);
+
       useEffect(()=>{fetch("/api/outreach/history").then(r=>r.json()).then(d=>setHistory(d||[])).catch(()=>{});},[]);
 
       useEffect(()=>{
@@ -992,13 +1022,43 @@
         // Right: History
         React.createElement("div",{style:{width:260,flexShrink:0,display:"flex",flexDirection:"column",gap:10}},
           React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".06em"}},"📬 Outreach history"),
+          // Filtering Controls
+          React.createElement("div",{style:{display:"flex",flexDirection:"column",gap:6}},
+            React.createElement("input",{
+              placeholder:"🔍 Search role or company...",
+              value:historySearch,
+              onChange:e=>setHistorySearch(e.target.value),
+              style:{...inputS,padding:"6px 10px",fontSize:"12px"}
+            }),
+            React.createElement("div",{style:{display:"flex",gap:4}},
+              ["all","today","yesterday"].map(df=>
+                React.createElement("button",{
+                  key:df,
+                  onClick:()=>setHistoryDateFilter(df),
+                  style:{
+                    background:historyDateFilter===df?T.accentDim:"transparent",
+                    border:`1px solid ${historyDateFilter===df?T.accent:T.border}`,
+                    borderRadius:6,
+                    padding:"4px 8px",
+                    color:historyDateFilter===df?T.accent:T.textMuted,
+                    fontSize:"11.5px",
+                    fontWeight:600,
+                    cursor:"pointer",
+                    flex:1,
+                    textTransform:"capitalize"
+                  }
+                },df)
+              )
+            )
+          ),
+          // History list
           React.createElement("div",{className:"scrollable",style:{flex:1,display:"flex",flexDirection:"column",gap:6}},
-            history.length===0
-              ?React.createElement(EmptyState,{icon:"📭",title:"No outreach yet",sub:"Your sent emails will appear here"})
-              :history.slice().reverse().map((h,i)=>React.createElement("div",{key:i,style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px"}},
-                React.createElement("div",{style:{fontSize:"12.5px",fontWeight:500}},h.role||"Unknown"),
-                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,marginTop:2}},h.company||""),
-                React.createElement("div",{style:{fontSize:"11px",color:T.textDim,marginTop:4,fontFamily:T.mono}},(h.emails||[]).length+" emails · "+(h.sent_at||"").slice(0,10))
+            filteredHistory.length===0
+              ?React.createElement(EmptyState,{icon:"📭",title:"No outreach found",sub:"No entries match your search/date filter"})
+              :filteredHistory.slice().reverse().map((h,i)=>React.createElement("div",{key:i,style:{background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px"}},
+                React.createElement("div",{style:{fontSize:"12.5px",fontWeight:500}},h.role||h.recruiter_name||"Unknown"),
+                React.createElement("div",{style:{fontSize:"11px",color:T.textMuted,marginTop:2}},h.company||h.recruiter_email||""),
+                React.createElement("div",{style:{fontSize:"11px",color:T.textDim,marginTop:4,fontFamily:T.mono}},((h.emails||[]).length||1)+" emails · "+(h.sent_at||h.timestamp||"").slice(0,10))
               ))
           )
         )
