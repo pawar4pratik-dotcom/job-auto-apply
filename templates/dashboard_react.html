@@ -291,7 +291,7 @@
       "Rejected":[],"Ghosted":[],"Skipped":[],
     };
 
-    function KanbanCard({job, onDragStart}){
+    function KanbanCard({job, onDragStart, onClick}){
       const score=parseInt(String(job["Match %"]||"0").replace("%",""))||0;
       const scoreColor=score>=75?T.accent:score>=55?T.amber:T.coral;
       const portal=job.Portal||"";
@@ -300,6 +300,7 @@
         <div
           draggable
           onDragStart={e=>{e.dataTransfer.setData("text/plain",JSON.stringify({url:job.URL,status:job.Status}));onDragStart&&onDragStart();}}
+          onClick={onClick}
           className="job-card"
           style={{background:T.surface3,border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 13px 11px 16px",cursor:"grab",position:"relative",overflow:"hidden",marginBottom:8}}
         >
@@ -320,7 +321,7 @@
       );
     }
 
-    function KanbanColumn({col, cards, onDrop}){
+    function KanbanColumn({col, cards, onDrop, onCardClick}){
       const [over,setOver]=useState(false);
       return (
         <div style={{flex:1,minWidth:180,maxWidth:240,display:"flex",flexDirection:"column",gap:0}}
@@ -335,7 +336,7 @@
           <div style={{flex:1,background:over?"rgba(255,255,255,0.025)":"rgba(255,255,255,0.01)",border:`1px dashed ${over?col.color:T.border}`,borderRadius:12,padding:"10px 8px",minHeight:120,transition:"all .15s"}}>
             {cards.length===0
               ?<div style={{textAlign:"center",padding:"28px 8px",color:T.textMuted,fontSize:"11px",opacity:0.5}}>Drop here</div>
-              :cards.map((j,i)=><KanbanCard key={j.URL||i} job={j} onDragStart={()=>{}}/>)
+              :cards.map((j,i)=><KanbanCard key={j.URL||i} job={j} onDragStart={()=>{}} onClick={()=>onCardClick(j.URL)}/>)
             }
           </div>
         </div>
@@ -411,12 +412,76 @@
       const colCards=useMemo(()=>{
         const m={};
         KB_COLS.forEach(c=>{m[c.id]=[];});
-        jobs.forEach(j=>{
+        filtered.forEach(j=>{
           const col=KB_COLS.find(c=>c.statuses.includes(j.Status));
           if(col)m[col.id].push(j);
         });
         return m;
-      },[jobs]);
+      },[filtered]);
+
+      const renderSidebar = () => {
+        return (
+          <div style={{width:320,flexShrink:0,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:selJob?"18px":"0",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+            {selJob
+              ?<>
+                <div style={{fontSize:"15px",fontWeight:600,marginBottom:4}}>{selJob.Role}</div>
+                <div style={{fontSize:"12.5px",color:T.textMuted,marginBottom:12}}>{(selJob.Company||"")+" · "+(selJob.Portal||"")}</div>
+                <div style={{display:"flex",gap:6,marginBottom:14}}>
+                  <Pill state={selJob.Status}/>
+                  <span style={{fontFamily:T.mono,fontSize:"11px",color:T.accent}}>{selJob["Match %"]||"—"}</span>
+                </div>
+                {selJob.URL&&selJob.URL.startsWith("http")&&<a href={selJob.URL} target="_blank" rel="noopener" style={{fontSize:"12px",color:T.blue,marginBottom:12,display:"block"}}>Open job posting ↗</a>}
+                {selJob.Error&&<div style={{background:T.coralDim,border:"1px solid rgba(255,94,91,.2)",borderRadius:8,padding:"10px",fontSize:"12px",color:T.coral,marginBottom:12}}>{selJob.Error}</div>}
+                <div style={{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Matched skills</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:14}}>
+                  {(selJob.matched_skills||[]).length>0
+                    ?(selJob.matched_skills||[]).map((s,i)=><span key={i} style={{fontSize:"10.5px",background:T.accentDim,color:T.accent,padding:"2px 8px",borderRadius:4,fontFamily:T.mono}}>{s}</span>)
+                    :<span style={{fontSize:"11px",color:T.textMuted}}>No skill data available</span>}
+                </div>
+                <div style={{borderTop:`1px solid ${T.border}`,marginTop:12,paddingTop:12,display:"flex",flexDirection:"column",gap:8,minHeight:0}}>
+                  <div style={{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span>Recruiter Contacts</span>
+                    {recLoading && <span style={{fontSize:"9.5px",color:T.accent}}>Searching...</span>}
+                  </div>
+
+                  {recruiters.length > 0 ? (
+                    <div className="scrollable" style={{display:"flex",flexDirection:"column",gap:6,overflowY:"auto",maxHeight:220}}>
+                      {recruiters.map((r,idx)=>(
+                        <div key={idx} style={{background:T.surface3,border:`1px solid ${T.border}`,borderRadius:8,padding:8,fontSize:"11px",display:"flex",flexDirection:"column",gap:2}}>
+                          <div style={{fontWeight:600,color:T.text}}>{r.name}</div>
+                          <div style={{color:T.textMuted,fontSize:"10px"}}>{r.role}</div>
+                          <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4}}>
+                            {r.email && (
+                              <button onClick={()=>{
+                                navigator.clipboard.writeText(r.email);
+                                toast("📋 Email copied!","success");
+                              }} style={{background:"none",border:"none",color:T.accent,cursor:"pointer",padding:0,fontSize:"10.5px",fontWeight:600}}>
+                                ✉️ Copy Email
+                              </button>
+                            )}
+                            {r.linkedin && (
+                              <a href={r.linkedin} target="_blank" rel="noopener" style={{color:T.blue,textDecoration:"none",fontSize:"10.5px"}}>
+                                🔗 Profile ↗
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    !recLoading && (
+                      <button onClick={()=>fetchRecruiters(selJob.Company)}
+                        style={{...btn(T.accent,false),width:"100%",justifyContent:"center",padding:"6px 12px",fontSize:"11px",height:30}}>
+                        🔍 Find Recruiter Contacts
+                      </button>
+                    )
+                  )}
+                </div>
+              </>
+              :<EmptyState icon="👈" title="Select a job" sub="Click on a job card to see details"/>}
+          </div>
+        );
+      };
 
       return (
         <div style={{display:"flex",flexDirection:"column",gap:12,height:"100%"}}>
@@ -453,10 +518,13 @@
 
           {/* KANBAN VIEW */}
           {view==="kanban" && (
-            <div style={{display:"flex",gap:12,flex:1,minHeight:0,overflowX:"auto",paddingBottom:8}}>
-              {KB_COLS.map(col=>(
-                <KanbanColumn key={col.id} col={col} cards={colCards[col.id]||[]} onDrop={handleDrop}/>
-              ))}
+            <div style={{display:"flex",gap:16,flex:1,minHeight:0}}>
+              <div style={{flex:1,display:"flex",gap:12,overflowX:"auto",paddingBottom:8}}>
+                {KB_COLS.map(col=>(
+                  <KanbanColumn key={col.id} col={col} cards={colCards[col.id]||[]} onDrop={handleDrop} onCardClick={setSelected}/>
+                ))}
+              </div>
+              {renderSidebar()}
             </div>
           )}
 
@@ -485,65 +553,7 @@
                   }
                 </div>
               </div>
-              <div style={{width:320,flexShrink:0,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:selJob?"18px":"0",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                {selJob
-                  ?<>
-                    <div style={{fontSize:"15px",fontWeight:600,marginBottom:4}}>{selJob.Role}</div>
-                    <div style={{fontSize:"12.5px",color:T.textMuted,marginBottom:12}}>{(selJob.Company||"")+" · "+(selJob.Portal||"")}</div>
-                    <div style={{display:"flex",gap:6,marginBottom:14}}>
-                      <Pill state={selJob.Status}/>
-                      <span style={{fontFamily:T.mono,fontSize:"11px",color:T.accent}}>{selJob["Match %"]||"—"}</span>
-                    </div>
-                    {selJob.URL&&selJob.URL.startsWith("http")&&<a href={selJob.URL} target="_blank" rel="noopener" style={{fontSize:"12px",color:T.blue,marginBottom:12,display:"block"}}>Open job posting ↗</a>}
-                    {selJob.Error&&<div style={{background:T.coralDim,border:"1px solid rgba(255,94,91,.2)",borderRadius:8,padding:"10px",fontSize:"12px",color:T.coral,marginBottom:12}}>{selJob.Error}</div>}
-                    <div style={{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Matched skills</div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:14}}>
-                      {(selJob.matched_skills||[]).length>0
-                        ?(selJob.matched_skills||[]).map((s,i)=><span key={i} style={{fontSize:"10.5px",background:T.accentDim,color:T.accent,padding:"2px 8px",borderRadius:4,fontFamily:T.mono}}>{s}</span>)
-                        :<span style={{fontSize:"11px",color:T.textMuted}}>No skill data available</span>}
-                    </div>
-                    <div style={{borderTop:`1px solid ${T.border}`,marginTop:12,paddingTop:12,display:"flex",flexDirection:"column",gap:8,minHeight:0}}>
-                      <div style={{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <span>Recruiter Contacts</span>
-                        {recLoading && <span style={{fontSize:"9.5px",color:T.accent}}>Searching...</span>}
-                      </div>
-
-                      {recruiters.length > 0 ? (
-                        <div className="scrollable" style={{display:"flex",flexDirection:"column",gap:6,overflowY:"auto",maxHeight:220}}>
-                          {recruiters.map((r,idx)=>(
-                            <div key={idx} style={{background:T.surface3,border:`1px solid ${T.border}`,borderRadius:8,padding:8,fontSize:"11px",display:"flex",flexDirection:"column",gap:2}}>
-                              <div style={{fontWeight:600,color:T.text}}>{r.name}</div>
-                              <div style={{color:T.textMuted,fontSize:"10px"}}>{r.role}</div>
-                              <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4}}>
-                                {r.email && (
-                                  <button onClick={()=>{
-                                    navigator.clipboard.writeText(r.email);
-                                    toast("📋 Email copied!","success");
-                                  }} style={{background:"none",border:"none",color:T.accent,cursor:"pointer",padding:0,fontSize:"10.5px",fontWeight:600}}>
-                                    ✉️ Copy Email
-                                  </button>
-                                )}
-                                {r.linkedin && (
-                                  <a href={r.linkedin} target="_blank" rel="noopener" style={{color:T.blue,textDecoration:"none",fontSize:"10.5px"}}>
-                                    🔗 Profile ↗
-                                  </a>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        !recLoading && (
-                          <button onClick={()=>fetchRecruiters(selJob.Company)}
-                            style={{...btn(T.accent,false),width:"100%",justifyContent:"center",padding:"6px 12px",fontSize:"11px",height:30}}>
-                            🔍 Find Recruiter Contacts
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </>
-                  :<EmptyState icon="👈" title="Select a job" sub="Click on a job card to see details"/>}
-              </div>
+              {renderSidebar()}
             </div>
           )}
         </div>
