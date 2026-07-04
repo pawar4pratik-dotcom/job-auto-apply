@@ -139,6 +139,7 @@ def _fetch_linkedin_public(skills: str, location: str, company: str, log_fn) -> 
     results = []
     try:
         import requests as _req
+        from bs4 import BeautifulSoup
         keywords = f"{skills} {company}".strip()
         # LinkedIn job search public endpoint
         params = {
@@ -149,39 +150,67 @@ def _fetch_linkedin_public(skills: str, location: str, company: str, log_fn) -> 
             "start": 0,
         }
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "text/html,application/xhtml+xml",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
         }
         url = "https://www.linkedin.com/jobs/search"
         r = _req.get(url, params=params, headers=headers, timeout=15)
         if r.status_code == 200:
-            # Parse job cards from HTML
-            html = r.text
-            # Extract job cards
-            job_ids = re.findall(r'"jobId":"(\d+)"', html)
-            titles  = re.findall(r'"title":"([^"]+)"', html)
-            comps   = re.findall(r'"companyName":"([^"]+)"', html)
-            locs    = re.findall(r'"formattedLocation":"([^"]+)"', html)
-
-            seen = set()
-            for i, jid in enumerate(job_ids[:20]):
-                if jid in seen:
-                    continue
-                seen.add(jid)
-                title = titles[i] if i < len(titles) else skills
-                comp  = comps[i]  if i < len(comps)  else company
-                loc   = locs[i]   if i < len(locs)   else location
-                results.append({
-                    "company": comp, "title": title,
-                    "url": f"https://www.linkedin.com/jobs/view/{jid}",
-                    "location": loc, "portal": "LinkedIn",
-                    "posted": "", "description": "",
-                })
+            soup = BeautifulSoup(r.text, 'html.parser')
+            for card in soup.select('.job-search-card'):
+                title_el = card.select_one('.base-search-card__title')
+                title = title_el.text.strip() if title_el else ""
+                
+                comp_el = card.select_one('.base-search-card__subtitle')
+                comp = comp_el.text.strip() if comp_el else ""
+                
+                loc_el = card.select_one('.job-search-card__location')
+                loc = loc_el.text.strip() if loc_el else ""
+                
+                urn = card.get('data-entity-urn', '')
+                jid = urn.split(':')[-1] if urn else ''
+                
+                if jid and title:
+                    results.append({
+                        "company": comp, "title": title,
+                        "url": f"https://www.linkedin.com/jobs/view/{jid}",
+                        "location": loc, "portal": "LinkedIn",
+                        "posted": "", "description": "",
+                    })
     except Exception as e:
         log_fn(f"    [WARN] LinkedIn public fetch: {e}")
 
     log_fn(f"    LinkedIn: {len(results)} results")
+    return results
+
+
+def _fetch_naukri_browser(skills: str, location: str, company: str, log_fn) -> list:
+    """Fallback to browser search for Naukri if public API gets blocked."""
+    results = []
+    try:
+        from browser import create_browser
+        import naukri_bot
+        log_fn("    [INFO] Launching headless Naukri browser for targeted search...")
+        driver = create_browser(headless=True, profile_name="naukri")
+        try:
+            kw = f"{company + ' ' if company else ''}{skills}".strip()
+            naukri_bot.search_jobs(driver, kw, location, page=1, log_fn=lambda x: None)
+            time.sleep(3.5)
+            
+            cards = naukri_bot.get_job_listings(driver)
+            for card in cards[:20]:
+                job_id, title, comp, url, posted_date = naukri_bot.extract_card_metadata_naukri(card)
+                if url and title:
+                    results.append({
+                        "company": comp, "title": title, "url": url,
+                        "location": location, "portal": "Naukri",
+                        "posted": posted_date, "description": "",
+                    })
+        finally:
+            driver.quit()
+    except Exception as e:
+        log_fn(f"    [WARN] Naukri browser fetch failed: {e}")
     return results
 
 
@@ -228,6 +257,9 @@ def _fetch_naukri_public(skills: str, location: str, company: str, log_fn) -> li
                     })
     except Exception as e:
         log_fn(f"    [WARN] Naukri API: {e}")
+
+    if not results:
+        results = _fetch_naukri_browser(skills, location, company, log_fn)
 
     log_fn(f"    Naukri: {len(results)} results")
     return results

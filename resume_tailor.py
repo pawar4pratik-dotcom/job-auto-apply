@@ -47,7 +47,7 @@ Write a 3-sentence professional summary that:
 - Closes with a value statement
 Return ONLY the 3-sentence summary. No labels, no preamble.
 """
-        model    = genai.GenerativeModel("gemini-1.5-flash")
+        model    = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:

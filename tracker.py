@@ -2,6 +2,7 @@
 tracker.py — Job application tracker.
 
 Saves every application event to logs/job_applications.csv.
+Also dual-writes to SQLite via core/database.py (additive, non-breaking).
 Supports full FSM state: Applied → Viewed → Shortlisted → Interview → Offer / Rejected / Ghosted.
 Provides read helpers for the dashboard API.
 
@@ -12,6 +13,15 @@ CSV columns (10):
 import csv
 import os
 import datetime
+import threading
+
+_csv_write_lock = threading.Lock()
+
+# ── SQLite dual-write (safe import — never crashes if DB module is missing) ────
+try:
+    from core import database as _db
+except Exception:
+    _db = None
 
 TRACKER_FILE = "logs/job_applications.csv"
 
@@ -98,25 +108,45 @@ def log_application(
 
         score_str = f"{score}%" if not str(score).endswith("%") else str(score)
 
-        with open(path, "a", newline="", encoding="utf-8") as f:
-            csv.writer(f).writerow([
-                datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                company or "Unknown",
-                role or "Unknown",
-                portal or "",
-                url or "",
-                status,
-                score_str,
-                ", ".join(matched_skills) if matched_skills else "",
-                skip_reason,
-                follow_up,
-                posted_date or "",
-                ", ".join(missing_skills) if missing_skills else "",
-                decision or ""
-            ])
+        with _csv_write_lock:
+            with open(path, "a", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerow([
+                    datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    company or "Unknown",
+                    role or "Unknown",
+                    portal or "",
+                    url or "",
+                    status,
+                    score_str,
+                    ", ".join(matched_skills) if matched_skills else "",
+                    skip_reason,
+                    follow_up,
+                    posted_date or "",
+                    ", ".join(missing_skills) if missing_skills else "",
+                    decision or ""
+                ])
 
         # Console confirmation
         _print_logged(status, company, role, score, skip_reason)
+
+        # ── SQLite dual-write (additive — never blocks the CSV path) ──────────
+        try:
+            if _db:
+                _db.insert_application(
+                    company=company or "Unknown",
+                    role=role or "Unknown",
+                    portal=portal or "",
+                    url=url or "",
+                    status=status,
+                    match_pct=score_str,
+                    matched_skills=", ".join(matched_skills) if matched_skills else "",
+                    skip_reason=skip_reason,
+                    posted_date=posted_date or "",
+                    missing_skills=", ".join(missing_skills) if missing_skills else "",
+                    decision=decision or "",
+                )
+        except Exception:
+            pass  # DB failure never impacts CSV write
 
         # Trigger notifications for important states
         if status in ["Applied", "Manual Needed", "Review"]:
@@ -196,25 +226,26 @@ def update_status(url: str, new_status: str) -> bool:
         rows = []
         updated = False
         notif_data = None
-        with open(path, encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row.get("URL", "").strip() == url.strip():
-                    row["Status"] = new_status
-                    updated = True
-                    notif_data = {
-                        "company": row.get("Company", "Unknown"),
-                        "role": row.get("Role", "Unknown"),
-                        "portal": row.get("Portal", ""),
-                        "score": row.get("Match %", "0%"),
-                    }
-                rows.append(row)
+        with _csv_write_lock:
+            with open(path, encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row.get("URL", "").strip() == url.strip():
+                        row["Status"] = new_status
+                        updated = True
+                        notif_data = {
+                            "company": row.get("Company", "Unknown"),
+                            "role": row.get("Role", "Unknown"),
+                            "portal": row.get("Portal", ""),
+                            "score": row.get("Match %", "0%"),
+                        }
+                    rows.append(row)
 
-        if updated:
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=HEADERS)
-                writer.writeheader()
-                writer.writerows(rows)
+            if updated:
+                with open(path, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(f, fieldnames=HEADERS)
+                    writer.writeheader()
+                    writer.writerows(rows)
                 
             # Trigger notifications for status transitions
             if notif_data and new_status in ["Applied", "Manual Needed", "Review"]:
@@ -234,6 +265,14 @@ def update_status(url: str, new_status: str) -> bool:
                 except Exception as ne:
                     print(f"  [WARN] Failed to trigger status transition notifier: {ne}")
                     
+        # ── SQLite dual-write for status updates ─────────────────────────────
+        if updated:
+            try:
+                if _db:
+                    _db.update_status_by_url(url, new_status)
+            except Exception:
+                pass  # DB failure never impacts CSV write
+
         return updated
     except Exception as e:
         print(f"  [ERROR] update_status failed: {e}")
@@ -365,3 +404,31 @@ def run_ghosted_check() -> None:
             print(f"[GHOSTED] Auto-marked {updated} stale applications as Ghosted.")
     except Exception as e:
         print(f"[ERROR] ghosted_check failed: {e}")
+
+
+def clear_non_applied_from_csv():
+    """
+    Remove all 'Skipped', 'Review', and 'Manual Needed' entries from the CSV log 
+    for the active profile, keeping only actual 'Applied' entries.
+    This ensures that the dashboard stats are reset properly when retrying.
+    """
+    path = _tracker_path()
+    if not os.path.exists(path):
+        return
+    import csv
+    try:
+        rows = []
+        with _csv_write_lock:
+            with open(path, mode="r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    status = row.get("Status", "")
+                    if status not in ["Skipped", "Review", "Manual Needed"]:
+                        rows.append(row)
+            
+            with open(path, mode="w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=HEADERS)
+                writer.writeheader()
+                writer.writerows(rows)
+    except Exception as e:
+        print(f"  [ERROR] clear_non_applied_from_csv failed: {e}")

@@ -27,12 +27,34 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 
-from browser import wait_for, click, fill, human_pause
-from config.profile import PROFILE
-try:
-    from config.profile import COMPANY_CREDENTIALS
-except ImportError:
-    COMPANY_CREDENTIALS = {}
+from browser import wait_for, click, fill, human_pause, wait_for_ajax_transition
+# Config profile will be dynamically loaded/reloaded
+PROFILE = {}
+RESUME_PATH = ""
+WORKDAY_FIELDS = {}
+COMPANY_CREDENTIALS = {}
+
+def reload_profile_globals():
+    global PROFILE, RESUME_PATH, WORKDAY_FIELDS, COMPANY_CREDENTIALS
+    try:
+        import config.profile
+        import importlib
+        importlib.reload(config.profile)
+        PROFILE = getattr(config.profile, "PROFILE", {})
+        RESUME_PATH = os.path.abspath(PROFILE.get("resume_path", ""))
+        WORKDAY_FIELDS = {
+            "legalNameSection_firstName":  PROFILE.get("first_name", ""),
+            "legalNameSection_lastName":   PROFILE.get("last_name", ""),
+            "email":                       PROFILE.get("email", ""),
+            "phone":                       PROFILE.get("phone", ""),
+            "addressSection_city":         PROFILE.get("city", ""),
+        }
+        COMPANY_CREDENTIALS = getattr(config.profile, "COMPANY_CREDENTIALS", {})
+    except Exception:
+        pass
+
+# Populate initial values
+reload_profile_globals()
 
 # ─── Logging relay ───────────────────────────────────────────────────────────
 _log_fn = None
@@ -401,7 +423,11 @@ def _trigger_forgot_password(driver, email_addr: str) -> bool:
     pw_inputs = driver.find_elements(By.CSS_SELECTOR, "input[type='password'], input[data-automation-id='newPassword']")
     confirm_inputs = driver.find_elements(By.CSS_SELECTOR, "input[data-automation-id='confirmPassword']")
     
-    new_pw = "Megamind@9595" 
+    try:
+        import config.profile
+        new_pw = getattr(config.profile, "PROFILE", {}).get("corp_password") or getattr(config.profile, "PROFILE", {}).get("naukri_password") or "Megamind@9595"
+    except Exception:
+        new_pw = "Megamind@9595" 
     
     if len(pw_inputs) >= 1:
         force_set_value(driver, pw_inputs[0], new_pw)
@@ -1349,6 +1375,7 @@ def _click_next_or_submit(driver) -> str:
                     continue
                 if btn.is_displayed():
                     driver.execute_script("arguments[0].click();", btn)
+                    wait_for_ajax_transition(driver)
                     return "submitted"
         except Exception:
             pass
@@ -1373,6 +1400,7 @@ def _click_next_or_submit(driver) -> str:
                     continue
                 if btn.is_displayed():
                     driver.execute_script("arguments[0].click();", btn)
+                    wait_for_ajax_transition(driver)
                     return "advanced"
         except Exception:
             pass
@@ -2003,12 +2031,9 @@ def _universal_multi_page_apply(driver, url: str, company: str, role: str,
                 logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
                 os.makedirs(logs_dir, exist_ok=True)
                 screenshot_path = os.path.join(logs_dir, screenshot_filename)
-                artifact_path = os.path.join(r"C:\Users\Pratik\.gemini\antigravity\brain\ea2d3941-8ecf-4346-ae66-07af174ae292", screenshot_filename)
                 try:
                     driver.save_screenshot(screenshot_path)
-                    import shutil
-                    shutil.copy2(screenshot_path, artifact_path)
-                    print(f"  [DEBUG] Saved screenshot of validation errors at: {artifact_path}")
+                    print(f"  [DEBUG] Saved screenshot of validation errors at: {screenshot_path}")
                 except Exception as e:
                     print(f"  [DEBUG] Could not save validation error screenshot: {e}")
                 print("  [FAIL] Could not clear validation errors after 3 attempts.")
@@ -2026,12 +2051,9 @@ def _universal_multi_page_apply(driver, url: str, company: str, role: str,
                 logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
                 os.makedirs(logs_dir, exist_ok=True)
                 screenshot_path = os.path.join(logs_dir, screenshot_filename)
-                artifact_path = os.path.join(r"C:\Users\Pratik\.gemini\antigravity\brain\ea2d3941-8ecf-4346-ae66-07af174ae292", screenshot_filename)
                 try:
                     driver.save_screenshot(screenshot_path)
-                    import shutil
-                    shutil.copy2(screenshot_path, artifact_path)
-                    print(f"  [DEBUG] Saved screenshot of stuck form at: {artifact_path}")
+                    print(f"  [DEBUG] Saved screenshot of stuck form at: {screenshot_path}")
                 except Exception as e:
                     print(f"  [DEBUG] Could not save screenshot: {e}")
                 print("  [WARN] Form stuck — no navigation button found.")
@@ -2475,6 +2497,7 @@ CAREER_URLS = []
 
 def run_careers_bot(headless: bool = False, urls=None, log_fn=None):
     """Apply to a list of company career site URLs."""
+    reload_profile_globals()
     from browser import create_browser
     from tracker import log_application
 

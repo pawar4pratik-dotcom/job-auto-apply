@@ -6,10 +6,10 @@ import time
 import os
 from selenium.webdriver.common.by import By
 
-from browser import create_browser, wait_for, click, fill, human_pause, scroll_down
+from browser import create_browser, wait_for, click, fill, human_pause, scroll_down, wait_for_ajax_transition
 from filter import should_apply
 from tracker import log_application
-from config.profile import PROFILE, SEARCH_KEYWORDS, SEARCH_LOCATIONS, TARGET_COMPANIES
+import config.profile
 
 APPLIED_LOG = "logs/applied_naukri.txt"
 
@@ -45,14 +45,66 @@ def save_applied(job_id):
         f.write(job_id + "\n")
 
 
+def _skipped_naukri_path() -> str:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        import config.profile
+        active_profile = getattr(config.profile, "ACTIVE_PROFILE_NAME", "")
+        if active_profile:
+            filename = f"logs/skipped_naukri_{active_profile}.txt"
+        else:
+            filename = "logs/skipped_naukri.txt"
+    except Exception:
+        filename = "logs/skipped_naukri.txt"
+    return os.path.join(script_dir, filename)
+
+
+def load_skipped():
+    """Load set of already-skipped job IDs for Naukri."""
+    log_path = _skipped_naukri_path()
+    if os.path.exists(log_path):
+        with open(log_path, encoding="utf-8") as f:
+            return set(f.read().splitlines())
+    return set()
+
+
+def save_skipped(job_id):
+    if not job_id:
+        return
+    log_path = _skipped_naukri_path()
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    try:
+        skipped = load_skipped()
+        if job_id not in skipped:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(job_id + "\n")
+    except Exception:
+        pass
+
+
 def login(driver, log_fn=print):
     """Log into Naukri."""
+    import config.profile
+    import importlib
+    importlib.reload(config.profile)
+    profile_data = getattr(config.profile, "PROFILE", {})
+
+    email = profile_data.get("naukri_email", "").strip()
+    password = profile_data.get("naukri_password", "").strip()
+    if not email or not password:
+        log_fn("[ERROR] Naukri credentials (email or password) are empty. Please configure them in the Profiles tab.")
+        return False
+
     log_fn("[LOGIN] Logging into Naukri...")
     driver.get("https://www.naukri.com/nlogin/login")
     human_pause(2, 3)
 
-    fill(driver, By.ID, "usernameField", PROFILE["naukri_email"])
-    fill(driver, By.ID, "passwordField", PROFILE["naukri_password"])
+    if "naukri.com" in driver.current_url and "login" not in driver.current_url:
+        log_fn("[OK] Naukri already logged in via active session")
+        return True
+
+    fill(driver, By.ID, "usernameField", email)
+    fill(driver, By.ID, "passwordField", password)
     click(driver, By.XPATH, "//button[contains(text(),'Login')]")
     human_pause(3, 5)
 
@@ -72,12 +124,22 @@ def login(driver, log_fn=print):
     return False
 
 
-def search_jobs(driver, keyword, location, log_fn=print):
+def search_jobs(driver, keyword, location, page=1, log_fn=print):
     """Search for jobs on Naukri."""
-    log_fn(f"\n[SEARCH] Searching: '{keyword}' in '{location}'")
+    log_fn(f"\n[SEARCH] Searching: '{keyword}' in '{location}' (Page {page})")
+    try:
+        import config.profile
+        exp_years = int(getattr(config.profile, "PROFILE", {}).get("total_experience_years", 4))
+    except Exception:
+        exp_years = 4
+    
+    min_exp = max(0, exp_years - 2)
+    max_exp = exp_years + 2
+    
+    page_suffix = f"-{page}" if page > 1 else ""
     url = (
-        f"https://www.naukri.com/{keyword.lower().replace(' ', '-')}-jobs-in-{location.lower()}"
-        f"?experience=2&experience=5&jobAge=1"  # 2-5 yrs exp, posted today
+        f"https://www.naukri.com/{keyword.lower().replace(' ', '-')}-jobs-in-{location.lower().replace(' ', '-')}{page_suffix}"
+        f"?experience={min_exp}&experience={max_exp}&jobAge=1"
     )
     driver.get(url)
     human_pause(1.2, 2.0)
@@ -261,7 +323,7 @@ def answer_questions_naukri(driver, log_fn=print):
                     continue
 
                 # ── C. Try persistent Q&A store first ──
-                answer = get_answer(label)
+                answer = get_answer(label, driver=driver)
                 if answer == "__MANUAL__":
                     log_fn(f"  [FORM] Field '{label}' is marked as MANUAL. Skipping.")
                     continue
@@ -298,7 +360,7 @@ def answer_questions_naukri(driver, log_fn=print):
                 if not legend or len(legend) < 5:
                     continue
 
-                target_answer = get_answer(legend)
+                target_answer = get_answer(legend, driver=driver)
                 if target_answer == "__MANUAL__":
                     log_fn(f"  [FORM] Radio '{legend[:50]}' is MANUAL. Skipping.")
                     continue
@@ -378,7 +440,7 @@ def answer_questions_naukri(driver, log_fn=print):
                 if not legend:
                     continue
                 
-                target_answer = get_answer(legend) or smart_radio_answer(legend)
+                target_answer = get_answer(legend, driver=driver) or smart_radio_answer(legend)
                 if not target_answer:
                     log_fn(f"  [FORM] No match for fallback radio group '{legend}'. Recording as unanswered.")
                     record_unanswered(legend, portal="Naukri")
@@ -443,7 +505,7 @@ def answer_questions_naukri(driver, log_fn=print):
                     continue
 
                 # Get smart answer
-                answer = get_answer(label) or smart_answer_for_label(label) or smart_radio_answer(label)
+                answer = get_answer(label, driver=driver) or smart_answer_for_label(label) or smart_radio_answer(label)
                 if not answer:
                     continue
 
@@ -583,7 +645,9 @@ def apply_naukri(driver, log_fn=print, company="Company", role="Data Engineer"):
         human_pause(1.5, 2.5)
 
         # ── 2. Tailored resume generation ─────────────────────────────────────
-        abs_path = os.path.abspath(PROFILE.get("resume_path", ""))
+        import config.profile
+        profile_data = getattr(config.profile, "PROFILE", {})
+        abs_path = os.path.abspath(profile_data.get("resume_path", ""))
         tailored_resume_path = abs_path
         if os.path.exists(abs_path):
             try:
@@ -600,41 +664,27 @@ def apply_naukri(driver, log_fn=print, company="Company", role="Data Engineer"):
         current_handles = set(driver.window_handles)
         if current_handles - initial_handles:
             new_tab = list(current_handles - initial_handles)[0]
-            log_fn("  [INFO] External ATS tab opened. Attempting to fill form...")
-            driver.switch_to.window(new_tab)
-            human_pause(1.5, 2.5)
-            # Try answering the external form
             try:
-                answer_questions_naukri(driver, log_fn=log_fn)
-                human_pause(0.5, 1.0)
-                # Try submitting
-                for sel in [
-                    "button[type='submit']",
-                    "//button[contains(text(),'Submit') or contains(text(),'Apply')]"
-                ]:
-                    try:
-                        if sel.startswith("//"):
-                            btn = driver.find_element(By.XPATH, sel)
-                        else:
-                            btn = driver.find_element(By.CSS_SELECTOR, sel)
-                        if btn.is_displayed():
-                            driver.execute_script("arguments[0].click();", btn)
-                            human_pause(1.0, 2.0)
-                            break
-                    except Exception:
-                        pass
-            except Exception as ext_err:
-                log_fn(f"  [WARN] External ATS fill error: {ext_err}")
-            finally:
-                driver.close()
-                driver.switch_to.window(list(initial_handles)[-1])
-            return False  # Can't confirm success on external ATS
+                driver.switch_to.window(new_tab)
+                new_url = driver.current_url.lower()
+                if "naukri.com" in new_url:
+                    log_fn("  [INFO] Naukri apply/questionnaire tab opened. Continuing on new tab...")
+                    # Do not close, just let the script continue on this tab
+                else:
+                    log_fn("  [INFO] External ATS tab opened. Failing fast (Minimax paradigm)...")
+                    driver.close()
+                    driver.switch_to.window(list(initial_handles)[-1])
+                    return False
+            except Exception:
+                try:
+                    driver.switch_to.window(list(initial_handles)[-1])
+                except Exception:
+                    pass
+                return False
 
         # ── 4. Redirect check ─────────────────────────────────────────────────
         if "naukri.com" not in driver.current_url.lower():
-            log_fn(f"  [INFO] Redirected to: {driver.current_url}")
-            driver.back()
-            human_pause(1.0, 1.5)
+            log_fn(f"  [INFO] Redirected to external ATS: {driver.current_url}. Failing fast...")
             return False
 
         # ── 5. Dismiss chatbot / cookie popups ────────────────────────────────
@@ -730,6 +780,16 @@ def apply_naukri(driver, log_fn=print, company="Company", role="Data Engineer"):
                 break
 
             human_pause(1.0, 2.0)  # Wait for page transition
+            wait_for_ajax_transition(driver)
+
+            # Check for validation errors on current form page
+            try:
+                error_elements = driver.find_elements(By.CSS_SELECTOR, ".error, .err, .err-msg, [class*='error'], .validation-msg")
+                visible_errors = [e.text.strip() for e in error_elements if e.is_displayed() and e.text.strip()]
+                if visible_errors:
+                    log_fn(f"  [FORM] Validation error(s) detected: {', '.join(visible_errors[:3])}")
+            except Exception:
+                pass
 
         else:
             # Loop exhausted — questionnaire still open
@@ -792,22 +852,27 @@ def apply_naukri(driver, log_fn=print, company="Company", role="Data Engineer"):
 
 
 from tracker import get_today_count
-from config.profile import DAILY_LIMIT
-
 
 def run_naukri_bot(max_applications=20, headless=False, log_fn=print, stop_event=None, keywords=None, locations=None):
     log_fn("\n" + "="*55 + "\n  NAUKRI AUTO-APPLY BOT\n" + "="*55)
-    if get_today_count("Applied") >= DAILY_LIMIT:
-        log_fn(f"[STOP] Daily limit of {DAILY_LIMIT} applications reached. Stopping.")
+    
+    import config.profile
+    import importlib
+    importlib.reload(config.profile)
+    
+    daily_limit = getattr(config.profile, "DAILY_LIMIT", 50)
+    if get_today_count("Applied") >= daily_limit:
+        log_fn(f"[STOP] Daily limit of {daily_limit} applications reached. Stopping.")
         return
 
     driver = create_browser(headless=headless, profile_name="naukri")
     applied_jobs = load_applied()
+    skipped_jobs = load_skipped()
     processed_urls_this_run = set()
     total_applied = 0
     
-    target_keywords = keywords if keywords is not None else SEARCH_KEYWORDS
-    target_locations = locations if locations is not None else SEARCH_LOCATIONS
+    target_keywords = keywords if keywords is not None else getattr(config.profile, "SEARCH_KEYWORDS", [])
+    target_locations = locations if locations is not None else getattr(config.profile, "SEARCH_LOCATIONS", [])
 
     try:
         if not login(driver, log_fn=log_fn): return
@@ -820,99 +885,116 @@ def run_naukri_bot(max_applications=20, headless=False, log_fn=print, stop_event
                 if stop_event and stop_event.is_set(): break
                 if total_applied >= max_applications: break
 
-                search_jobs(driver, keyword, location, log_fn=log_fn)
-                cards = get_job_listings(driver)
-                log_fn(f"  Found {len(cards)} jobs on search page")
-
-                for card in cards:
+                for page_num in range(1, 4):
                     if stop_event and stop_event.is_set(): break
                     if total_applied >= max_applications: break
 
-                    # ── Early card-level pre-filtering (Stage A) ──────────────
-                    try:
-                        job_id, title, company, url, posted_date = extract_card_metadata_naukri(card)
-                    except Exception:
-                        continue
-                        
-                    if not job_id or not url:
-                        continue
+                    search_jobs(driver, keyword, location, page=page_num, log_fn=log_fn)
+                    cards = get_job_listings(driver)
+                    log_fn(f"  Found {len(cards)} jobs on search page (Page {page_num})")
+                    if not cards:
+                        try:
+                            os.makedirs("logs", exist_ok=True)
+                            screenshot_path = f"logs/naukri_zero_listings_page_{page_num}.png"
+                            driver.save_screenshot(screenshot_path)
+                            log_fn(f"  [DEBUG] Saved screenshot to {screenshot_path}")
+                        except Exception as e:
+                            log_fn(f"  [DEBUG] Failed to save screenshot: {e}")
+                        break
 
-                    if job_id in applied_jobs or url in applied_jobs or url in processed_urls_this_run:
-                        continue
+                    for card in cards:
+                        if stop_event and stop_event.is_set(): break
+                        if total_applied >= max_applications: break
 
-                    # Check for applied badge text on the search card itself
-                    try:
-                        badges = card.find_elements(By.XPATH, ".//*[contains(text(), 'Applied') or contains(text(), 'applied')]")
-                        if any("applied" in b.text.strip().lower() for b in badges):
+                        # ── Early card-level pre-filtering (Stage A) ──────────────
+                        try:
+                            job_id, title, company, url, posted_date = extract_card_metadata_naukri(card)
+                        except Exception:
                             continue
-                    except Exception:
-                        pass
+                            
+                        if not job_id or not url:
+                            continue
 
-                    if url:
-                        processed_urls_this_run.add(url)
+                        if job_id in applied_jobs or job_id in skipped_jobs or url in applied_jobs or url in processed_urls_this_run:
+                            continue
 
-                    # Fast Stage A filter
-                    do_apply, score, matched, reason, decision, missing = should_apply(title, "", company)
-                    if not do_apply:
-                        log_fn(f"\n[FAST FILTER SKIP] {company} -- {title}")
-                        log_fn(f"  Skip: {reason}")
-                        log_application(company, title, "Naukri", url, "Skipped", score, matched, skip_reason=reason, posted_date=posted_date, missing_skills=missing, decision=decision)
-                        continue
+                        # Check for applied badge text on the search card itself
+                        try:
+                            badges = card.find_elements(By.XPATH, ".//*[contains(text(), 'Applied') or contains(text(), 'applied')]")
+                            if any("applied" in b.text.strip().lower() for b in badges):
+                                continue
+                        except Exception:
+                            pass
 
-                    # Only open tab and load description if it passes Stage A
-                    log_fn(f"\n[JOB] {company} -- {title}{' (Posted: ' + posted_date + ')' if posted_date else ''}")
-                    try:
-                        driver.execute_script("window.open(arguments[0]);", url)
-                        driver.switch_to.window(driver.window_handles[-1])
-                        human_pause(1.5, 2.5)
-                        description = get_job_description(driver)
-                        # Retry once if description is empty (page may still be loading)
-                        if not description or len(description.strip()) < 50:
+                        if url:
+                            processed_urls_this_run.add(url)
+
+                        # Fast Stage A filter
+                        do_apply, score, matched, reason, decision, missing = should_apply(title, "", company)
+                        if not do_apply:
+                            log_fn(f"\n[FAST FILTER SKIP] {company} -- {title}")
+                            log_fn(f"  Skip: {reason}")
+                            log_application(company, title, "Naukri", url, "Skipped", score, matched, skip_reason=reason, posted_date=posted_date, missing_skills=missing, decision=decision)
+                            if job_id:
+                                save_skipped(job_id)
+                            continue
+
+                        # Only open tab and load description if it passes Stage A
+                        log_fn(f"\n[JOB] {company} -- {title}{' (Posted: ' + posted_date + ')' if posted_date else ''}")
+                        try:
+                            driver.execute_script("window.open(arguments[0]);", url)
+                            driver.switch_to.window(driver.window_handles[-1])
                             human_pause(1.5, 2.5)
                             description = get_job_description(driver)
-                    except Exception as e:
-                        log_fn(f"  [WARN] Failed to load job page: {e}")
+                            # Retry once if description is empty (page may still be loading)
+                            if not description or len(description.strip()) < 50:
+                                human_pause(1.5, 2.5)
+                                description = get_job_description(driver)
+                        except Exception as e:
+                            log_fn(f"  [WARN] Failed to load job page: {e}")
+                            if len(driver.window_handles) > 1:
+                                driver.close()
+                                driver.switch_to.window(driver.window_handles[0])
+                            continue
+
+                        # Stage B full description filter
+                        do_apply, score, matched, reason, decision, missing = should_apply(title, description, company)
+
+                        if not do_apply or decision == "skip":
+                            log_fn(f"  Skip: {reason}")
+                            log_application(company, title, "Naukri", url, "Skipped", score, matched, skip_reason=reason, posted_date=posted_date, missing_skills=missing, decision=decision)
+                            if job_id:
+                                save_skipped(job_id)
+                            if len(driver.window_handles) > 1:
+                                driver.close()
+                                driver.switch_to.window(driver.window_handles[0])
+                            continue
+
+                        if decision == "review":
+                            log_fn(f"  [REVIEW QUEUE] {company} -- {title} ({score}%) - Queued for review")
+                            log_application(company, title, "Naukri", url, "Review", score, matched, skip_reason=reason, posted_date=posted_date, missing_skills=missing, decision=decision)
+                            save_applied(job_id)
+                            if len(driver.window_handles) > 1:
+                                driver.close()
+                                driver.switch_to.window(driver.window_handles[0])
+                            continue
+
+                        log_fn(f"  [MATCH] {score}% -- Applying...")
+                        success = apply_naukri(driver, log_fn=log_fn, company=company, role=title)
+                        if success:
+                            log_fn("  [SUCCESS] Applied!")
+                            log_application(company, title, "Naukri", url, "Applied", score, matched, posted_date=posted_date)
+                            save_applied(job_id)
+                            total_applied += 1
+                        else:
+                            log_fn("  [FAIL] Apply failed")
+                            log_application(company, title, "Naukri", url, "Manual Needed", score, matched, skip_reason="Apply verification failed, redirected, or stalled", posted_date=posted_date)
+
+                        # Safe tab cleanup
                         if len(driver.window_handles) > 1:
                             driver.close()
                             driver.switch_to.window(driver.window_handles[0])
-                        continue
-
-                    # Stage B full description filter
-                    do_apply, score, matched, reason, decision, missing = should_apply(title, description, company)
-
-                    if not do_apply or decision == "skip":
-                        log_fn(f"  Skip: {reason}")
-                        log_application(company, title, "Naukri", url, "Skipped", score, matched, skip_reason=reason, posted_date=posted_date, missing_skills=missing, decision=decision)
-                        if len(driver.window_handles) > 1:
-                            driver.close()
-                            driver.switch_to.window(driver.window_handles[0])
-                        continue
-
-                    if decision == "review":
-                        log_fn(f"  [REVIEW QUEUE] {company} -- {title} ({score}%) - Queued for review")
-                        log_application(company, title, "Naukri", url, "Review", score, matched, skip_reason=reason, posted_date=posted_date, missing_skills=missing, decision=decision)
-                        save_applied(job_id)
-                        if len(driver.window_handles) > 1:
-                            driver.close()
-                            driver.switch_to.window(driver.window_handles[0])
-                        continue
-
-                    log_fn(f"  [MATCH] {score}% -- Applying...")
-                    success = apply_naukri(driver, log_fn=log_fn, company=company, role=title)
-                    if success:
-                        log_fn("  [SUCCESS] Applied!")
-                        log_application(company, title, "Naukri", url, "Applied", score, matched, posted_date=posted_date)
-                        save_applied(job_id)
-                        total_applied += 1
-                    else:
-                        log_fn("  [FAIL] Apply failed")
-                        log_application(company, title, "Naukri", url, "Manual Needed", score, matched, skip_reason="Apply verification failed, redirected, or stalled", posted_date=posted_date)
-
-                    # Safe tab cleanup
-                    if len(driver.window_handles) > 1:
-                        driver.close()
-                        driver.switch_to.window(driver.window_handles[0])
-                    human_pause(0.5, 1.2)
+                        human_pause(0.5, 1.2)
     except KeyboardInterrupt:
         log_fn("\n[STOP] Naukri Bot stopped by user.")
     finally:

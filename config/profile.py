@@ -3,9 +3,6 @@ import config.secrets
 
 COMPANY_CREDENTIALS = {}
 PROFILE = {
-    'linkedin_url': 'https://www.linkedin.com/in/prateekpawar-/',
-    'gender': 'Male',
-    'date_of_birth': '04/18/1994',
     'first_name': 'PRATIK',
     'last_name': 'PAWAR',
     'resume_path': 'C:\\Users\\Pratik\\Downloads\\job auto apply\\config\\profiles\\resumes\\1782048344_Pratik_Pawar_Senior_Data_Engineer_ATS_7499_p06_2.pdf',
@@ -18,38 +15,8 @@ PROFILE = {
     'notice_period': '15',
     'current_ctc': '13',
     'expected_ctc': '18',
-    'work_experience': [
-        {
-            'job_title': 'Senior Data Engineer',
-            'company': 'Coforge Limited',
-            'location': 'Pune India',
-            'currently_work_here': True,
-            'start_month': '06',
-            'start_year': '2024',
-            'description': 'Enterprise Data Platform – PMI Product Lifecycle & Launch Tracking\n• Architected and deployed an enterprise-grade AWS data lake integrating SAP, PLM, E2Open, and Excel sources into Amazon S3, enabling unified product lifecycle tracking for PMI.\n• Built data transformation pipelines using AWS Glue (PySpark) for multi-source data cleaning, filtering, and joining, reducing data processing time by improving pipeline modularity.\n• Optimized storage costs and query performance by converting raw data into partitioned Parquet format; applied predicate pushdown and partition pruning strategies.\n• Loaded curated datasets into Snowflake via COPY INTO for efficient, auditable batch processing with full lineage traceability.\n• Designed Star Schema data models (fact and dimension tables) supporting KPI reporting and business intelligence dashboards.\n• Conducted data validation, quality checks, and lineage analysis to ensure reporting accuracy and data reliability for enterprise stakeholders.'
-        },
-        {
-            'job_title': 'Data Engineer',
-            'company': 'Vim Soft Private Limited',
-            'location': 'Pune India',
-            'currently_work_here': False,
-            'start_month': '05',
-            'start_year': '2021',
-            'end_month': '06',
-            'end_year': '2024',
-            'description': 'Dynamic Retail Data Insight Platform\n• Developed end-to-end ETL pipeline to ingest and process JSON data from client retail systems into Snowflake, enabling structured analytics for business stakeholders.\n• Ingested raw data into Amazon S3 and performed SQL-based transformation using AWS Athena, ensuring scalable serverless query execution.\n• Performed comprehensive data cleaning including duplicate removal, null handling, and schema standardization to ensure data integrity.\n• Implemented Snowpipe with SQS event notifications for near-real-time data ingestion, reducing data latency significantly.\n• Optimized Snowflake queries for reporting and analytics, resulting in improved dashboard load times and reduced compute costs.\n• Collaborated with business analysts to deliver structured, validated datasets for retail performance and sales insights.'
-        }
-    ],
-    'education': [
-        {
-            'school': 'National University of Civil Engineering',
-            'degree': 'Bachelor of Engineering',
-            'field_of_study': 'Civil Engineering',
-            'gpa': '63',
-            'start_year': '2013',
-            'end_year': '2019'
-        }
-    ],
+    'work_experience': [{'job_title': 'Senior Data Engineer', 'company': 'Coforge Limited', 'location': 'Pune India', 'currently_work_here': True, 'start_month': '06', 'start_year': '2024', 'description': 'Enterprise Data Platform – PMI Product Lifecycle & Launch Tracking\n• Architected and deployed an enterprise-grade AWS data lake integrating SAP, PLM, E2Open, and Excel sources into Amazon S3, enabling unified product lifecycle tracking for PMI.\n• Built data transformation pipelines using AWS Glue (PySpark) for multi-source data cleaning, filtering, and joining, reducing data processing time by improving pipeline modularity.\n• Optimized storage costs and query performance by converting raw data into partitioned Parquet format; applied predicate pushdown and partition pruning strategies.\n• Loaded curated datasets into Snowflake via COPY INTO for efficient, auditable batch processing with full lineage traceability.\n• Designed Star Schema data models (fact and dimension tables) supporting KPI reporting and business intelligence dashboards.\n• Conducted data validation, quality checks, and lineage analysis to ensure reporting accuracy and data reliability for enterprise stakeholders.'}, {'job_title': 'Data Engineer', 'company': 'Vim Soft Private Limited', 'location': 'Pune India', 'currently_work_here': False, 'start_month': '05', 'start_year': '2021', 'end_month': '06', 'end_year': '2024', 'description': 'Dynamic Retail Data Insight Platform\n• Developed end-to-end ETL pipeline to ingest and process JSON data from client retail systems into Snowflake, enabling structured analytics for business stakeholders.\n• Ingested raw data into Amazon S3 and performed SQL-based transformation using AWS Athena, ensuring scalable serverless query execution.\n• Performed comprehensive data cleaning including duplicate removal, null handling, and schema standardization to ensure data integrity.\n• Implemented Snowpipe with SQS event notifications for near-real-time data ingestion, reducing data latency significantly.\n• Optimized Snowflake queries for reporting and analytics, resulting in improved dashboard load times and reduced compute costs.\n• Collaborated with business analysts to deliver structured, validated datasets for retail performance and sales insights.'}],
+    'education': [{'school': 'National University of Civil Engineering', 'degree': 'Bachelor of Engineering', 'field_of_study': 'Civil Engineering', 'gpa': '63', 'start_year': '2013', 'end_year': '2019'}],
     'linkedin_email': config.secrets.LINKEDIN_EMAIL,
     'linkedin_password': config.secrets.LINKEDIN_PASSWORD,
     'naukri_email': config.secrets.NAUKRI_EMAIL,
@@ -58,13 +25,14 @@ PROFILE = {
     'corp_password': config.secrets.CORP_PASSWORD,
     'imap_email': config.secrets.IMAP_EMAIL,
     'imap_password': config.secrets.IMAP_PASSWORD,
+    'github_username': 'pawar4pratik-dotcom',
 }
 
 MY_SKILLS = ['AWS S3', 'AWS Glue', 'Amazon Athena', 'AWS Lambda', 'IAM', 'PySpark', 'Apache Spark', 'Hadoop HDFS', 'Snowflake', 'Oracle', 'Snowpipe', 'COPY INTO', 'SQS', 'Python', 'SQL', 'MySQL', 'Spark SQL', 'PL/SQL', 'Star Schema', 'ETL/ELT Pipelines', 'Data Ingestion', 'Data Transformation', 'Data Validation', 'Parquet Optimization', 'Data Lineage']
-TECH_EXPERIENCE = {}
-WORK_PREFERENCES = {}
+TECH_EXPERIENCE = {'python': '4', 'sql': '4', 'aws': '3', 'snowflake': '2', 'pyspark': '2', 'spark': '2', 'etl': '4', 'data': '4', 'azure': '1', 'docker': '2', 'linux': '3'}
+WORK_PREFERENCES = {'require_sponsorship': False, 'authorized_india': True, 'open_to_relocation': True}
 
-DAILY_LIMIT        = 50
+DAILY_LIMIT        = 200
 PER_RUN_LIMIT      = 15
 SCHEDULED_RUNS     = ['09:00', '14:00', '19:00']
 HEADLESS_DEFAULT   = True
@@ -73,8 +41,8 @@ MIN_MATCH_SCORE  = 30
 AUTO_THRESHOLD   = 75
 REVIEW_THRESHOLD = 55
 
-SEARCH_KEYWORDS  = []
-SEARCH_LOCATIONS = ['Remote', 'Pune', 'mumbai', 'benglore']
+SEARCH_KEYWORDS  = ['Data Engineer', 'Senior Data Engineer', 'AWS Data Engineer', 'Snowflake Data Engineer']
+SEARCH_LOCATIONS = ['Remote', 'Pune', 'mumbai', 'Bengaluru']
 TARGET_COMPANIES = []
 
 COVER_LETTER = ''

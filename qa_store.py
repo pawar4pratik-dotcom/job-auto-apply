@@ -15,12 +15,22 @@ import os
 _QA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "qa_store.json")
 
 
+_QA_CACHE = None
+_QA_CACHE_MTIME = 0
+
+
 def _load() -> dict:
-    """Load the Q&A store from disk. Returns empty dict if file missing."""
+    """Load the Q&A store from disk, utilizing an in-memory cache."""
+    global _QA_CACHE, _QA_CACHE_MTIME
     try:
         if os.path.exists(_QA_FILE):
+            mtime = os.path.getmtime(_QA_FILE)
+            if _QA_CACHE is not None and mtime == _QA_CACHE_MTIME:
+                return _QA_CACHE
             with open(_QA_FILE, encoding="utf-8") as f:
-                return json.load(f)
+                _QA_CACHE = json.load(f)
+                _QA_CACHE_MTIME = mtime
+                return _QA_CACHE
     except Exception:
         pass
     return {}
@@ -28,12 +38,15 @@ def _load() -> dict:
 
 def _save(store: dict) -> None:
     """Write the Q&A store to disk atomically."""
+    global _QA_CACHE, _QA_CACHE_MTIME
     try:
         os.makedirs(os.path.dirname(_QA_FILE), exist_ok=True)
         tmp = _QA_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(store, f, indent=2, ensure_ascii=False)
         os.replace(tmp, _QA_FILE)
+        _QA_CACHE = store
+        _QA_CACHE_MTIME = os.path.getmtime(_QA_FILE)
     except Exception as e:
         print(f"[QA] Save error: {e}")
 
@@ -101,10 +114,58 @@ def save_answer(question: str, answer: str) -> None:
     _save(store)
 
 
-def get_answer(question: str) -> str:
+def get_semantic_match(question: str) -> str:
     """
-    Look up a stored answer by question text.
-    Returns the answer string, or empty string if not found / not yet answered.
+    Look up a stored answer by question text using Jaccard similarity.
+    Returns the answer string, or empty string if no high-confidence match.
+    """
+    if not question:
+        return ""
+    
+    store = _load()
+    answered_library = [
+        {"q": v.get("question", k), "a": v.get("answer")}
+        for k, v in store.items()
+        if v.get("answer") and v.get("mode") != "manual"
+    ]
+    
+    STOP_WORDS = {"how", "many", "do", "you", "have", "the", "a", "an", "is", "are", "what", "your", "of", "to", "in", "for", "and", "or", "with"}
+    def get_tokens(text: str):
+        import re
+        text = text.lower().strip()
+        text = re.sub(r'[^\w\s]', '', text)
+        tokens = set(text.split())
+        return tokens - STOP_WORDS
+
+    q_tokens = get_tokens(question)
+    if not q_tokens:
+        return ""
+        
+    best_match = ""
+    best_score = 0.0
+    for item in answered_library:
+        cached_q = item.get("q", "")
+        cached_tokens = get_tokens(cached_q)
+        if not cached_tokens:
+            continue
+        intersection = q_tokens.intersection(cached_tokens)
+        union = q_tokens.union(cached_tokens)
+        score = len(intersection) / float(len(union))
+        if score > best_score:
+            best_score = score
+            best_match = item.get("a", "")
+            
+    if best_score >= 0.65:
+        print(f"[QA] Local semantic match found (Jaccard: {best_score:.2f}) -> '{best_match}'")
+        return str(best_match).strip()
+        
+    return ""
+
+
+def get_answer(question: str, driver = None) -> str:
+    """
+    Look up a stored answer by question text (exact match first, then local Jaccard match).
+    Returns the answer string, or empty string if not found.
     """
     if not question:
         return ""
@@ -117,15 +178,13 @@ def get_answer(question: str) -> str:
         if entry.get("answer"):
             return entry["answer"]
             
-    # Try semantic matching / profile answering if exact match missing
+    # Try fast local Jaccard match
     try:
-        from core.semantic_qa import resolve_semantic_answer
-        ans = resolve_semantic_answer(question)
+        ans = get_semantic_match(question)
         if ans:
-            save_auto_answered(question, ans)
             return ans
     except Exception as e:
-        print(f"[QA] Semantic lookup error: {e}")
+        print(f"[QA] Local Jaccard lookup error: {e}")
         
     return ""
 

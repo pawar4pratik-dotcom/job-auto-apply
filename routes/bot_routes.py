@@ -127,12 +127,21 @@ def api_run():
 
     STOP_EVENT.clear()
     data = request.get_json() or {}
+    
+    if data.get("clear_cache") or data.get("retry_skipped"):
+        try:
+            from core.cache import clear_cache
+            clear_cache()
+            bot_log("[INFO] Decision cache cleared — previously skipped jobs will be evaluated again.")
+        except Exception as e:
+            bot_log(f"[WARN] Failed to clear decision cache: {e}")
+
     target   = data.get("target") or data.get("mode") or "all"
     headless = data.get("headless", False)
-    max_apps = data.get("max_applications") or data.get("max_apps") or 15
-    company  = (data.get("company") or "").strip()
-    skills   = (data.get("skills") or "").strip()
-    location = (data.get("location") or "").strip()
+    company  = str(data.get("company") or "").strip()
+    skills   = str(data.get("skills") or "").strip()
+    location = str(data.get("location") or "").strip()
+    max_apps = int(data.get("max_applications") or data.get("max_apps") or 15)
 
     # Load defaults from active config.profile if empty
     try:

@@ -109,34 +109,44 @@ if __name__ == "__main__":
         config.profile.TARGET_COMPANIES = companies_list
         print(f"[TARGETS] Overriding target companies filter to: {companies_list}")
 
-    if args.test:
-        test_mode()
-    elif args.retry:
-        from retry_engine import retry_company_jobs
-        retry_company_jobs(args.retry)
-    elif args.urls:
-        from careers_bot import run_careers_bot
-        url_list = [u.strip() for u in args.urls.split(",") if u.strip()]
-        run_careers_bot(headless=args.headless, urls=url_list)
-    elif args.linkedin:
-        from linkedin_bot import run_linkedin_bot
-        from config.profile import PER_RUN_LIMIT
-        run_linkedin_bot(max_applications=PER_RUN_LIMIT, headless=args.headless)
-    elif args.naukri:
-        from naukri_bot import run_naukri_bot
-        from config.profile import PER_RUN_LIMIT
-        run_naukri_bot(max_applications=PER_RUN_LIMIT, headless=args.headless)
-    elif args.indeed:
-        from indeed_bot import run_indeed_bot
-        from config.profile import PER_RUN_LIMIT
-        run_indeed_bot(max_applications=PER_RUN_LIMIT, headless=args.headless)
-    elif args.careers:
-        from careers_bot import run_careers_bot
-        run_careers_bot(headless=args.headless)
-    elif args.summary:
-        from tracker import print_summary
-        print_summary()
-    else:
-        run_all(headless=args.headless)
+    # Check if we should buffer notifications for the run
+    is_run_action = not (args.test or args.summary or args.retry)
+    if is_run_action:
+        from core.notifier import enable_buffering, send_session_report
+        enable_buffering()
+
+    try:
+        if args.test:
+            test_mode()
+        elif args.retry:
+            from retry_engine import retry_company_jobs
+            retry_company_jobs(args.retry)
+        elif args.urls:
+            from careers_bot import run_careers_bot
+            url_list = [u.strip() for u in args.urls.split(",") if u.strip()]
+            run_careers_bot(headless=args.headless, urls=url_list)
+        elif args.linkedin:
+            from linkedin_bot import run_linkedin_bot
+            from config.profile import PER_RUN_LIMIT
+            run_linkedin_bot(max_applications=PER_RUN_LIMIT, headless=args.headless)
+        elif args.naukri:
+            from naukri_bot import run_naukri_bot
+            from config.profile import PER_RUN_LIMIT
+            run_naukri_bot(max_applications=PER_RUN_LIMIT, headless=args.headless)
+        elif args.indeed:
+            from indeed_bot import run_indeed_bot
+            from config.profile import PER_RUN_LIMIT
+            run_indeed_bot(max_applications=PER_RUN_LIMIT, headless=args.headless)
+        elif args.careers:
+            from careers_bot import run_careers_bot
+            run_careers_bot(headless=args.headless)
+        elif args.summary:
+            from tracker import print_summary
+            print_summary()
+        else:
+            run_all(headless=args.headless)
+    finally:
+        if is_run_action:
+            send_session_report()
 
 

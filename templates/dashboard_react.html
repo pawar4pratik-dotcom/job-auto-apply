@@ -9,9 +9,9 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
-        body,html,#root{background:#060910;min-height:100vh;color:#E8EDF5;font-family:'Inter',system-ui,sans-serif}
+        body,html,#root{background:#060910;min-height:100vh;color:#E8EDF5;font-family:'Outfit','Inter',system-ui,sans-serif}
         ::-webkit-scrollbar{width:5px;height:5px}
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:4px}
@@ -46,10 +46,20 @@
         .empty-state{animation:fade-in .5s ease}
         input:focus,textarea:focus{border-color:rgba(0,229,160,.4)!important;outline:none}
         textarea{resize:vertical}
+        [draggable="true"]{user-select:none}
+        [draggable="true"]:active{cursor:grabbing;opacity:.85}
+        
+        /* Ambient Background Glow (JobOps Inspired) */
+        .bg-glow{position:fixed;border-radius:50%;filter:blur(130px);opacity:0.045;pointer-events:none;z-index:0}
+        .bg-glow-1{top:-150px;left:-100px;width:550px;height:550px;background:radial-gradient(circle,#00E5A0 0%,#22D3EE 100%)}
+        .bg-glow-2{bottom:-200px;right:-150px;width:700px;height:700px;background:radial-gradient(circle,#A78BFA 0%,#60A5FA 100%)}
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div id="root" style="position:relative; z-index:1;"></div>
+
 
     <script>
       Babel.registerPreset("custom-react", {
@@ -78,7 +88,7 @@
       cyan:"#22D3EE", cyanDim:"rgba(34,211,238,.1)",
       text:"#E8EDF5", textMuted:"#6B7A8D", textDim:"#9BA8B8",
       mono:"'JetBrains Mono','Fira Code',monospace",
-      sans:"'Inter',system-ui,-apple-system,sans-serif",
+      sans:"'Outfit','Inter',system-ui,-apple-system,sans-serif",
     };
 
     const STATE_META = {
@@ -188,6 +198,7 @@
     function CommandCenterTab({running,jobs,logs,logsEndRef,uptime,config,onStart,onStop,fmtUptime,todayStats}){
       const applied=todayStats.applied||0, limit=config.dailyLimit||50;
       const pct=Math.min(100,Math.round(applied/limit*100));
+      const [minimized, setMinimized] = React.useState(false);
 
       return React.createElement("div",{style:{display:"flex",gap:16,height:"100%"}},
         // Left: Logs
@@ -210,11 +221,16 @@
               React.createElement("div",{style:{height:"100%",width:pct+"%",background:`linear-gradient(90deg,${T.accent},${T.blue})`,borderRadius:3,transition:"width .5s"}})
             )
           ),
+          // Log section header with Minimize toggle
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:-4}},
+            React.createElement("span",{style:{fontSize:"11px",fontWeight:600,color:T.textMuted}},"Live Activity Logs"),
+            React.createElement("button",{onClick:()=>setMinimized(!minimized),style:{background:"transparent",border:"none",color:T.accent,fontSize:"11px",cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:4}},minimized?"📂 Maximize Logs":"📁 Minimize Logs (Show Last 20)")
+          ),
           // Live log console
-          React.createElement("div",{className:"scrollable",style:{flex:1,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 6px",minHeight:0}},
+          React.createElement("div",{className:"scrollable",style:{flex: minimized ? "none" : 1, height: minimized ? "150px" : "auto", background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:"10px 6px",minHeight:0}},
             logs.length===0
               ?React.createElement(EmptyState,{icon:"📡",title:"Waiting for logs",sub:"Start the bot to see real-time activity"})
-              :logs.map(e=>React.createElement(LogRow,{key:e.id,entry:e})),
+              :(minimized ? logs.slice(-20) : logs).map(e=>React.createElement(LogRow,{key:e.id,entry:e})),
             React.createElement("div",{ref:logsEndRef})
           )
         ),
@@ -228,6 +244,7 @@
             ),
             running&&React.createElement("div",{style:{fontFamily:T.mono,fontSize:"22px",color:T.text,textAlign:"center",padding:"8px 0"}},fmtUptime(uptime)),
             React.createElement("button",{className:"btn-glow",onClick:running?onStop:()=>onStart("all"),style:{...btn(running?T.coral:T.accent,true),width:"100%",justifyContent:"center",padding:"10px 16px",fontSize:"13.5px",marginTop:8}},running?"■ Stop Bot":"▶ Start All Bots"),
+            !running&&React.createElement("button",{className:"btn-glow",onClick:()=>onStart("all", {retry_skipped:true}),style:{...btn(T.blue,true),width:"100%",justifyContent:"center",padding:"9px 12px",fontSize:"12.5px",marginTop:6}},"🔄 Retry Skipped Jobs"),
             running&&React.createElement("button",{onClick:()=>{fetch("/api/force_stop",{method:"POST"}).then(()=>toast("Force stopped","warn")).catch(()=>{})},style:{...btn(T.coral),width:"100%",justifyContent:"center",padding:"7px 12px",fontSize:"11px",marginTop:4,opacity:0.8}},"⛔ Force Stop (clear stuck state)")
           ),
           // Per-portal controls
@@ -253,19 +270,136 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // TAB: JOB PIPELINE
+    // TAB: JOB PIPELINE  (Kanban Board)
     // ═══════════════════════════════════════════════════════════════════
+    const KB_COLS = [
+      {id:"review",    label:"📝 Review",          color:T.amber,   statuses:["Review","Pending Apply","Manual Needed"]},
+      {id:"applied",   label:"📤 Applied",          color:T.accent,  statuses:["Applied","Viewed"]},
+      {id:"shortlist", label:"✨ Shortlisted",       color:T.blue,    statuses:["Shortlisted"]},
+      {id:"interview", label:"🎯 Interview / Offer", color:T.purple,  statuses:["Interview","Offer"]},
+      {id:"closed",    label:"🚫 Closed",            color:T.textMuted,statuses:["Rejected","Ghosted","Skipped"]},
+    ];
+    const FSM_ALLOWED = {
+      "Review":["Pending Apply","Skipped"],
+      "Pending Apply":["Applied","Skipped"],
+      "Manual Needed":["Applied","Skipped"],
+      "Applied":["Viewed","Interview","Rejected","Ghosted"],
+      "Viewed":["Shortlisted","Interview","Rejected"],
+      "Shortlisted":["Interview","Rejected"],
+      "Interview":["Offer","Rejected"],
+      "Offer":["Rejected"],
+      "Rejected":[],"Ghosted":[],"Skipped":[],
+    };
+
+    function KanbanCard({job, onDragStart}){
+      const score=parseInt(String(job["Match %"]||"0").replace("%",""))||0;
+      const scoreColor=score>=75?T.accent:score>=55?T.amber:T.coral;
+      const portal=job.Portal||"";
+      const portalColor={LinkedIn:"#0a66c2",Naukri:"#4a90e2",Indeed:"#2164f3"}[portal]||T.textMuted;
+      return (
+        <div
+          draggable
+          onDragStart={e=>{e.dataTransfer.setData("text/plain",JSON.stringify({url:job.URL,status:job.Status}));onDragStart&&onDragStart();}}
+          className="job-card"
+          style={{background:T.surface3,border:`1px solid ${T.border}`,borderRadius:10,padding:"11px 13px 11px 16px",cursor:"grab",position:"relative",overflow:"hidden",marginBottom:8}}
+        >
+          <div style={{position:"absolute",top:0,left:0,width:3,height:"100%",background:scoreColor,borderRadius:"10px 0 0 10px"}}/>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6,marginBottom:5}}>
+            <div style={{fontSize:"12px",fontWeight:600,color:T.text,lineHeight:1.3,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.Company||"Unknown"}</div>
+            <span style={{fontFamily:T.mono,fontSize:"11px",fontWeight:700,color:scoreColor,flexShrink:0}}>{score>0?score+"%":"—"}</span>
+          </div>
+          <div style={{fontSize:"11px",color:T.textDim,marginBottom:8,lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{job.Role||"Unknown Role"}</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:4}}>
+            <span style={{fontSize:"9px",padding:"2px 7px",borderRadius:20,background:portalColor+"22",color:portalColor,border:`1px solid ${portalColor}44`,fontWeight:600,letterSpacing:"0.5px"}}>{portal||"Other"}</span>
+            <span style={{fontSize:"10px",color:T.textMuted}}>{(job.Date||"").slice(0,10)}</span>
+          </div>
+          {job.URL&&job.URL.startsWith("http")&&
+            <a href={job.URL} target="_blank" rel="noopener" onClick={e=>e.stopPropagation()}
+               style={{position:"absolute",top:7,right:8,fontSize:"10px",color:T.textMuted,textDecoration:"none",opacity:0.5}}>↗</a>}
+        </div>
+      );
+    }
+
+    function KanbanColumn({col, cards, onDrop}){
+      const [over,setOver]=useState(false);
+      return (
+        <div style={{flex:1,minWidth:180,maxWidth:240,display:"flex",flexDirection:"column",gap:0}}
+          onDragOver={e=>{e.preventDefault();setOver(true);}}
+          onDragLeave={()=>setOver(false)}
+          onDrop={e=>{e.preventDefault();setOver(false);const d=e.dataTransfer.getData("text/plain");try{onDrop(JSON.parse(d),col);}catch{}}}
+        >
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,padding:"0 2px"}}>
+            <span style={{fontSize:"12px",fontWeight:700,color:col.color}}>{col.label}</span>
+            <span style={{fontFamily:T.mono,fontSize:"10px",color:T.textMuted,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:10,padding:"1px 7px"}}>{cards.length}</span>
+          </div>
+          <div style={{flex:1,background:over?"rgba(255,255,255,0.025)":"rgba(255,255,255,0.01)",border:`1px dashed ${over?col.color:T.border}`,borderRadius:12,padding:"10px 8px",minHeight:120,transition:"all .15s"}}>
+            {cards.length===0
+              ?<div style={{textAlign:"center",padding:"28px 8px",color:T.textMuted,fontSize:"11px",opacity:0.5}}>Drop here</div>
+              :cards.map((j,i)=><KanbanCard key={j.URL||i} job={j} onDragStart={()=>{}}/>)
+            }
+          </div>
+        </div>
+      );
+    }
+
     function JobPipelineTab({jobs}){
       const [search,setSearch]=useState("");
       const [statusFilter,setStatusFilter]=useState("all");
       const [portalFilter,setPortalFilter]=useState("all");
       const [selected,setSelected]=useState(null);
+      const [view,setView]=useState("kanban"); // "kanban" | "list"
+      const [recruiters,setRecruiters]=useState([]);
+      const [recLoading,setRecLoading]=useState(false);
+
+      useEffect(()=>{
+        setRecruiters([]);
+        setRecLoading(false);
+        if(selJob){
+          fetch(`/api/recruiters/list?company=${encodeURIComponent(selJob.Company||"")}`)
+            .then(r=>r.json())
+            .then(d=>setRecruiters(d||[]))
+            .catch(()=>[]);
+        }
+      },[selected]);
+
+      async function fetchRecruiters(company){
+        if(!company)return;
+        setRecLoading(true);
+        try{
+          const r=await fetch(`/api/recruiters/find?company=${encodeURIComponent(company)}`);
+          const d=await r.json();
+          setRecruiters(d||[]);
+          if(d && d.length > 0){
+            toast(`✅ Found ${d.length} recruiter contacts!`, "success");
+          } else {
+            toast("⚠️ No recruiters found online.", "warn");
+          }
+        }catch(e){
+          toast("❌ Failed to fetch recruiters","error");
+        }finally{
+          setRecLoading(false);
+        }
+      }
+
+      // Drag-drop status update
+      async function handleDrop(data,targetCol){
+        const {url,status:currentStatus}=data;
+        const targetStatus=targetCol.statuses[0];
+        if(!url||currentStatus===targetStatus)return;
+        const allowed=FSM_ALLOWED[currentStatus]||[];
+        if(!allowed.includes(targetStatus)){toast(`❌ Cannot move from "${currentStatus}" → "${targetStatus}"  (FSM rule)`,"error");return;}
+        try{
+          const r=await fetch("/api/applications/status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url,status:targetStatus})});
+          const d=await r.json();
+          if(d.ok)toast(`✅ Moved to "${targetStatus}"`,"success");
+          else toast("❌ "+( d.error||"Server error"),"error");
+        }catch(e){toast("❌ Network error","error");}
+      }
 
       const statuses=useMemo(()=>{const s=new Set(jobs.map(j=>(j.Status||"").toLowerCase()));return["all",...s]},[jobs]);
       const portals=useMemo(()=>{const p=new Set(jobs.map(j=>j.Portal||"Unknown"));return["all",...p]},[jobs]);
-
       const filtered=useMemo(()=>jobs.filter(j=>{
-        if(search){const q=search.toLowerCase();if(!(j.Role||"").toLowerCase().includes(q)&&!(j.Company||"").toLowerCase().includes(q))return false}
+        if(search){const q=search.toLowerCase();if(!(j.Role||"").toLowerCase().includes(q)&&!(j.Company||"").toLowerCase().includes(q))return false;}
         if(statusFilter!=="all"&&(j.Status||"").toLowerCase()!==statusFilter)return false;
         if(portalFilter!=="all"&&j.Portal!==portalFilter)return false;
         return true;
@@ -273,60 +407,149 @@
 
       const selJob=selected?jobs.find(j=>j.URL===selected):null;
 
-      return React.createElement("div",{style:{display:"flex",gap:16,height:"100%"}},
-        // Left: List
-        React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column",gap:12,minWidth:0}},
-          // Search + filters
-          React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}},
-            React.createElement("input",{placeholder:"🔍 Search roles, companies...",value:search,onChange:e=>setSearch(e.target.value),style:{...inputS,flex:1,minWidth:200,fontSize:"13px"}}),
-            React.createElement("select",{value:statusFilter,onChange:e=>setStatusFilter(e.target.value),style:{...inputS,width:"auto",cursor:"pointer"}},statuses.map(s=>React.createElement("option",{key:s,value:s},s==="all"?"All Status":s.charAt(0).toUpperCase()+s.slice(1)))),
-            React.createElement("select",{value:portalFilter,onChange:e=>setPortalFilter(e.target.value),style:{...inputS,width:"auto",cursor:"pointer"}},portals.map(p=>React.createElement("option",{key:p,value:p},p==="all"?"All Portals":p))),
-            React.createElement("button",{onClick:()=>window.open('/api/export-csv','_blank'),style:{...btn(T.accent,false),padding:"8px 12px",fontSize:"12.5px"}},"📥 Export CSV")
-          ),
-          React.createElement("div",{style:{fontSize:"11px",color:T.textMuted}},filtered.length+" of "+jobs.length+" jobs"),
-          // Job list
-          React.createElement("div",{className:"scrollable",style:{flex:1,display:"flex",flexDirection:"column",gap:6,minHeight:0}},
-            filtered.length===0
-              ?React.createElement(EmptyState,{icon:"🔍",title:"No jobs found",sub:"Try adjusting your filters or start the bot"})
-              :filtered.map(j=>{
-                const score=parseInt(String(j["Match %"]||"0").replace("%",""))||0;
-                const isSelected=selected===j.URL;
-                return React.createElement("div",{key:j.URL,className:"job-card",onClick:()=>setSelected(j.URL),style:{background:isSelected?T.surface3:T.surface2,border:`1px solid ${isSelected?T.accent+"66":T.border}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",display:"flex",gap:12,alignItems:"center"}},
-                  React.createElement(ScoreRing,{score,size:38}),
-                  React.createElement("div",{style:{flex:1,minWidth:0}},
-                    React.createElement("div",{style:{fontSize:"13px",fontWeight:500,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},j.Role||"Unknown Role"),
-                    React.createElement("div",{style:{fontSize:"11.5px",color:T.textMuted,marginTop:2}},
-                      (j.Company||"?")+(" · "+(j.Portal||""))+(" · "+(j.Date||""))
-                    )
-                  ),
-                  React.createElement(Pill,{state:j.Status})
-                );
-              })
-          )
-        ),
-        // Right: Detail panel
-        React.createElement("div",{style:{width:340,flexShrink:0,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:selJob?"18px":"0",display:"flex",flexDirection:"column",overflow:"hidden"}},
-          selJob
-            ?React.createElement(React.Fragment,null,
-              React.createElement("div",{style:{fontSize:"15px",fontWeight:600,marginBottom:4}},selJob.Role),
-              React.createElement("div",{style:{fontSize:"12.5px",color:T.textMuted,marginBottom:12}},(selJob.Company||"")+" · "+(selJob.Portal||"")),
-              React.createElement("div",{style:{display:"flex",gap:6,marginBottom:14}},
-                React.createElement(Pill,{state:selJob.Status}),
-                React.createElement("span",{style:{fontFamily:T.mono,fontSize:"11px",color:T.accent}},selJob["Match %"]||"—")
-              ),
-              selJob.URL&&selJob.URL.startsWith("http")&&React.createElement("a",{href:selJob.URL,target:"_blank",rel:"noopener",style:{fontSize:"12px",color:T.blue,marginBottom:12,display:"block"}},"Open job posting ↗"),
-              selJob.Error&&React.createElement("div",{style:{background:T.coralDim,border:`1px solid rgba(255,94,91,.2)`,borderRadius:8,padding:"10px",fontSize:"12px",color:T.coral,marginBottom:12}},selJob.Error),
-              React.createElement("div",{style:{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}},"Matched skills"),
-              React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:4,marginBottom:14}},
-                (selJob.matched_skills||[]).length>0
-                  ?(selJob.matched_skills||[]).map((s,i)=>React.createElement("span",{key:i,style:{fontSize:"10.5px",background:T.accentDim,color:T.accent,padding:"2px 8px",borderRadius:4,fontFamily:T.mono}},s))
-                  :React.createElement("span",{style:{fontSize:"11px",color:T.textMuted}},"No skill data available")
-              )
-            )
-            :React.createElement(EmptyState,{icon:"👈",title:"Select a job",sub:"Click on a job card to see details"})
-        )
+      // Partition cards into columns
+      const colCards=useMemo(()=>{
+        const m={};
+        KB_COLS.forEach(c=>{m[c.id]=[];});
+        jobs.forEach(j=>{
+          const col=KB_COLS.find(c=>c.statuses.includes(j.Status));
+          if(col)m[col.id].push(j);
+        });
+        return m;
+      },[jobs]);
+
+      return (
+        <div style={{display:"flex",flexDirection:"column",gap:12,height:"100%"}}>
+          {/* Toolbar */}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            <input placeholder="🔍 Search roles, companies..." value={search} onChange={e=>setSearch(e.target.value)}
+              style={{...inputS,flex:1,minWidth:180,fontSize:"13px"}}/>
+            {view==="list"&&<>
+              <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{...inputS,width:"auto",cursor:"pointer"}}>
+                {statuses.map(s=><option key={s} value={s}>{s==="all"?"All Status":s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+              </select>
+              <select value={portalFilter} onChange={e=>setPortalFilter(e.target.value)} style={{...inputS,width:"auto",cursor:"pointer"}}>
+                {portals.map(p=><option key={p} value={p}>{p==="all"?"All Portals":p}</option>)}
+              </select>
+            </>}
+            <button onClick={()=>{
+              if(view==="list" && statusFilter==="applied") {
+                setStatusFilter("all");
+              } else {
+                setView("list");
+                setStatusFilter("applied");
+              }
+            }}
+              style={{...btn(T.accent, statusFilter === "applied" && view === "list"), padding:"8px 14px", fontSize:"12px"}}>
+              🎯 View Applied ({jobs.filter(j=>(j.Status||"").toLowerCase()==="applied").length})
+            </button>
+            <button onClick={()=>setView(v=>v==="kanban"?"list":"kanban")}
+              style={{...btn(T.purple),padding:"8px 14px",fontSize:"12px"}}>
+              {view==="kanban"?"☰ List View":"⬛ Kanban View"}
+            </button>
+            <button onClick={()=>window.open("/api/export-csv","_blank")} style={{...btn(T.accent,false),padding:"8px 12px",fontSize:"12.5px"}}>📥 Export CSV</button>
+          </div>
+          <div style={{fontSize:"11px",color:T.textMuted}}>{jobs.length} applications tracked</div>
+
+          {/* KANBAN VIEW */}
+          {view==="kanban" && (
+            <div style={{display:"flex",gap:12,flex:1,minHeight:0,overflowX:"auto",paddingBottom:8}}>
+              {KB_COLS.map(col=>(
+                <KanbanColumn key={col.id} col={col} cards={colCards[col.id]||[]} onDrop={handleDrop}/>
+              ))}
+            </div>
+          )}
+
+          {/* LIST VIEW */}
+          {view==="list" && (
+            <div style={{display:"flex",gap:16,flex:1,minHeight:0}}>
+              <div style={{flex:1,display:"flex",flexDirection:"column",gap:6,minWidth:0}}>
+                <div className="scrollable" style={{flex:1,display:"flex",flexDirection:"column",gap:6,minHeight:0}}>
+                  {filtered.length===0
+                    ?<EmptyState icon="🔍" title="No jobs found" sub="Try adjusting your filters or start the bot"/>
+                    :filtered.map(j=>{
+                      const score=parseInt(String(j["Match %"]||"0").replace("%",""))||0;
+                      const isSelected=selected===j.URL;
+                      return (
+                        <div key={j.URL} className="job-card" onClick={()=>setSelected(j.URL)}
+                          style={{background:isSelected?T.surface3:T.surface2,border:`1px solid ${isSelected?T.accent+"66":T.border}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",display:"flex",gap:12,alignItems:"center"}}>
+                          <ScoreRing score={score} size={38}/>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:"13px",fontWeight:500,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{j.Role||"Unknown Role"}</div>
+                            <div style={{fontSize:"11.5px",color:T.textMuted,marginTop:2}}>{(j.Company||"?")+(" · "+(j.Portal||""))+(" · "+(j.Date||""))}</div>
+                          </div>
+                          <Pill state={j.Status}/>
+                        </div>
+                      );
+                    })
+                  }
+                </div>
+              </div>
+              <div style={{width:320,flexShrink:0,background:T.surface2,border:`1px solid ${T.border}`,borderRadius:12,padding:selJob?"18px":"0",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                {selJob
+                  ?<>
+                    <div style={{fontSize:"15px",fontWeight:600,marginBottom:4}}>{selJob.Role}</div>
+                    <div style={{fontSize:"12.5px",color:T.textMuted,marginBottom:12}}>{(selJob.Company||"")+" · "+(selJob.Portal||"")}</div>
+                    <div style={{display:"flex",gap:6,marginBottom:14}}>
+                      <Pill state={selJob.Status}/>
+                      <span style={{fontFamily:T.mono,fontSize:"11px",color:T.accent}}>{selJob["Match %"]||"—"}</span>
+                    </div>
+                    {selJob.URL&&selJob.URL.startsWith("http")&&<a href={selJob.URL} target="_blank" rel="noopener" style={{fontSize:"12px",color:T.blue,marginBottom:12,display:"block"}}>Open job posting ↗</a>}
+                    {selJob.Error&&<div style={{background:T.coralDim,border:"1px solid rgba(255,94,91,.2)",borderRadius:8,padding:"10px",fontSize:"12px",color:T.coral,marginBottom:12}}>{selJob.Error}</div>}
+                    <div style={{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Matched skills</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:14}}>
+                      {(selJob.matched_skills||[]).length>0
+                        ?(selJob.matched_skills||[]).map((s,i)=><span key={i} style={{fontSize:"10.5px",background:T.accentDim,color:T.accent,padding:"2px 8px",borderRadius:4,fontFamily:T.mono}}>{s}</span>)
+                        :<span style={{fontSize:"11px",color:T.textMuted}}>No skill data available</span>}
+                    </div>
+                    <div style={{borderTop:`1px solid ${T.border}`,marginTop:12,paddingTop:12,display:"flex",flexDirection:"column",gap:8,minHeight:0}}>
+                      <div style={{fontSize:"10px",color:T.textMuted,textTransform:"uppercase",letterSpacing:".05em",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span>Recruiter Contacts</span>
+                        {recLoading && <span style={{fontSize:"9.5px",color:T.accent}}>Searching...</span>}
+                      </div>
+
+                      {recruiters.length > 0 ? (
+                        <div className="scrollable" style={{display:"flex",flexDirection:"column",gap:6,overflowY:"auto",maxHeight:220}}>
+                          {recruiters.map((r,idx)=>(
+                            <div key={idx} style={{background:T.surface3,border:`1px solid ${T.border}`,borderRadius:8,padding:8,fontSize:"11px",display:"flex",flexDirection:"column",gap:2}}>
+                              <div style={{fontWeight:600,color:T.text}}>{r.name}</div>
+                              <div style={{color:T.textMuted,fontSize:"10px"}}>{r.role}</div>
+                              <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4}}>
+                                {r.email && (
+                                  <button onClick={()=>{
+                                    navigator.clipboard.writeText(r.email);
+                                    toast("📋 Email copied!","success");
+                                  }} style={{background:"none",border:"none",color:T.accent,cursor:"pointer",padding:0,fontSize:"10.5px",fontWeight:600}}>
+                                    ✉️ Copy Email
+                                  </button>
+                                )}
+                                {r.linkedin && (
+                                  <a href={r.linkedin} target="_blank" rel="noopener" style={{color:T.blue,textDecoration:"none",fontSize:"10.5px"}}>
+                                    🔗 Profile ↗
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        !recLoading && (
+                          <button onClick={()=>fetchRecruiters(selJob.Company)}
+                            style={{...btn(T.accent,false),width:"100%",justifyContent:"center",padding:"6px 12px",fontSize:"11px",height:30}}>
+                            🔍 Find Recruiter Contacts
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </>
+                  :<EmptyState icon="👈" title="Select a job" sub="Click on a job card to see details"/>}
+              </div>
+            </div>
+          )}
+        </div>
       );
     }
+
 
     // ═══════════════════════════════════════════════════════════════════
     // TAB: ANALYTICS
@@ -1483,8 +1706,8 @@
         return()=>{if(evtSrc)evtSrc.close()};
       },[addLog]);
 
-      const startBot=(target)=>{
-        fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:target,headless:config.headless})})
+      const startBot=(target, extraParams={})=>{
+        fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:target,headless:config.headless, ...extraParams})})
           .then(()=>{setRunning(true);setUptime(0);toast("Bot started: "+target,"success")})
           .catch(()=>{setRunning(true);setUptime(0);addLog({id:Math.random(),time:new Date().toLocaleTimeString(),type:"info",message:"Bot started (simulated)"})});
       };

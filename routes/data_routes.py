@@ -5,6 +5,7 @@ Routes:
   GET  /api/stats               Today's counts
   GET  /api/applications        Full application log
   GET  /api/analytics           Funnel analytics
+  GET  /api/kanban              Kanban board data (SQLite-backed)
   POST /api/applications/status Update application status
   GET  /api/qa                  Unanswered QA questions
   GET  /api/qa/all              All QA entries
@@ -92,6 +93,47 @@ def api_analytics():
     })
 
 
+@data_bp.route("/api/kanban")
+def api_kanban():
+    """
+    Returns Kanban board data:
+    - 'summary': count per FSM state (for column headers)
+    - 'cards':   latest 60 applied/interview rows (for card rendering)
+    Reads from SQLite first, falls back to CSV tracker.
+    """
+    # ── Try SQLite ───────────────────────────────────────────────────
+    try:
+        from core import database as db
+        summary = db.get_fsm_summary()
+        all_rows = db.get_all_rows()
+        # Normalize field names from SQLite (snake_case) to match JS expectations
+        cards = []
+        for r in all_rows[:60]:
+            if r.get("status") in ("Applied", "Viewed", "Shortlisted",
+                                   "Interview", "Offer", "Rejected",
+                                   "Manual Needed", "Review"):
+                cards.append({
+                    "Company":  r.get("company", ""),
+                    "Role":     r.get("role", ""),
+                    "Status":   r.get("status", ""),
+                    "Match %":  r.get("match_pct", ""),
+                    "URL":      r.get("url", ""),
+                    "Date":     r.get("date", ""),
+                    "Portal":   r.get("portal", ""),
+                })
+        return jsonify({"summary": summary, "cards": cards, "source": "sqlite"})
+    except Exception:
+        pass
+
+    # ── Fallback: CSV ─────────────────────────────────────────────────
+    rows = get_all_rows()[:60]
+    summary = {}
+    for row in rows:
+        s = row.get("Status", "Unknown")
+        summary[s] = summary.get(s, 0) + 1
+    return jsonify({"summary": summary, "cards": rows, "source": "csv"})
+
+
 @data_bp.route("/api/applications/status", methods=["POST"])
 def api_applications_status():
     data = request.get_json() or {}
@@ -164,3 +206,40 @@ def api_export_csv():
     if os.path.exists(path):
         return send_file(path, as_attachment=True, download_name=os.path.basename(path))
     return jsonify({"error": "No CSV file found"}), 404
+
+
+@data_bp.route("/api/recruiters/find")
+def api_recruiters_find():
+    company = request.args.get("company", "").strip()
+    if not company:
+        return jsonify([])
+    
+    from core import database as db
+    from core.recruiter_finder import find_recruiters_online
+
+    # Try cache first
+    cached = db.get_recruiters_by_company(company)
+    if cached:
+        return jsonify(cached)
+    
+    # Scrape fresh
+    try:
+        found = find_recruiters_online(company)
+        if found:
+            db.save_recruiters(company, found)
+            cached = db.get_recruiters_by_company(company)
+            return jsonify(cached)
+    except Exception as e:
+        print(f"[API][ERROR] find recruiters failed: {e}")
+        
+    return jsonify([])
+
+
+@data_bp.route("/api/recruiters/list")
+def api_recruiters_list():
+    company = request.args.get("company", "").strip()
+    if not company:
+        return jsonify([])
+    from core import database as db
+    cached = db.get_recruiters_by_company(company)
+    return jsonify(cached)

@@ -1,9 +1,38 @@
 .env
 __pycache__/
 *.pyc
+*.pyo
+
+# Secret credentials — NEVER push these
+config/secrets.py
+config/profiles/resumes/
+config/profiles/*.json
+
+# Runtime data — large files
 logs/
 sessions/
 scratch/
+
+# Browser debug dumps
+*.html
+google_search_*.html
+linkedin_search_*.html
+ddg_search.html
+
+# SQLite database (regenerated from CSV on startup)
+logs/*.db
+*.db
+
+# IDE
 .cursor/
-config/profiles/resumes/
-config/profiles/*.json
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Resumes and PDF outputs
+resume/
+resume/customized/
+static/js/kanban.js

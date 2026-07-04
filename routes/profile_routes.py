@@ -79,20 +79,20 @@ def api_profile_settings():
         telegram_chat_id   = data.get("telegram_chat_id", "")
         notification_channels = data.get("notification_channels", ["email"])
 
-        # Update .env file with secrets
-        env_updates = {
-            "GEMINI_API_KEY": gemini_api_key,
-            "LINKEDIN_EMAIL": profile_dict.get("linkedin_email", ""),
-            "LINKEDIN_PASSWORD": profile_dict.get("linkedin_password", ""),
-            "NAUKRI_EMAIL": profile_dict.get("naukri_email", ""),
-            "NAUKRI_PASSWORD": profile_dict.get("naukri_password", ""),
-            "IMAP_EMAIL": imap_email,
-            "IMAP_PASSWORD": imap_password,
-            "CORP_EMAIL": profile_dict.get("corp_email", ""),
-            "CORP_PASSWORD": profile_dict.get("corp_password", ""),
-            "TELEGRAM_BOT_TOKEN": telegram_bot_token,
-            "TELEGRAM_CHAT_ID": telegram_chat_id
-        }
+        # Update .env file with secrets safely
+        env_updates = {}
+        if gemini_api_key and not gemini_api_key.startswith("***"): env_updates["GEMINI_API_KEY"] = gemini_api_key
+        if profile_dict.get("linkedin_email") and not str(profile_dict["linkedin_email"]).startswith("***"): env_updates["LINKEDIN_EMAIL"] = profile_dict["linkedin_email"]
+        if profile_dict.get("linkedin_password") and not str(profile_dict["linkedin_password"]).startswith("***"): env_updates["LINKEDIN_PASSWORD"] = profile_dict["linkedin_password"]
+        if profile_dict.get("naukri_email") and not str(profile_dict["naukri_email"]).startswith("***"): env_updates["NAUKRI_EMAIL"] = profile_dict["naukri_email"]
+        if profile_dict.get("naukri_password") and not str(profile_dict["naukri_password"]).startswith("***"): env_updates["NAUKRI_PASSWORD"] = profile_dict["naukri_password"]
+        if imap_email and not imap_email.startswith("***"): env_updates["IMAP_EMAIL"] = imap_email
+        if imap_password and not imap_password.startswith("***"): env_updates["IMAP_PASSWORD"] = imap_password
+        if profile_dict.get("corp_email") and not str(profile_dict["corp_email"]).startswith("***"): env_updates["CORP_EMAIL"] = profile_dict["corp_email"]
+        if profile_dict.get("corp_password") and not str(profile_dict["corp_password"]).startswith("***"): env_updates["CORP_PASSWORD"] = profile_dict["corp_password"]
+        if telegram_bot_token and not telegram_bot_token.startswith("***"): env_updates["TELEGRAM_BOT_TOKEN"] = telegram_bot_token
+        if telegram_chat_id and not telegram_chat_id.startswith("***"): env_updates["TELEGRAM_CHAT_ID"] = telegram_chat_id
+
         _update_env_file(env_updates)
 
         # Reload secrets to pick up changes
@@ -505,12 +505,15 @@ def _sync_profile_to_system(profile_id, profile_data):
     custom_imap_pass = profile_dict.get("imap_password", "")
 
     env_updates = {
+        "GEMINI_API_KEY": profile_data.get("gemini_api_key", ""),
         "LINKEDIN_EMAIL": profile_dict.get("linkedin_email", ""),
         "LINKEDIN_PASSWORD": profile_dict.get("linkedin_password", ""),
         "NAUKRI_EMAIL": profile_dict.get("naukri_email", ""),
         "NAUKRI_PASSWORD": profile_dict.get("naukri_password", ""),
         "IMAP_EMAIL": custom_imap_email or profile_dict.get("naukri_email", "") or profile_dict.get("linkedin_email", ""),
         "IMAP_PASSWORD": custom_imap_pass or profile_dict.get("naukri_password", "") or profile_dict.get("linkedin_password", ""),
+        "TELEGRAM_BOT_TOKEN": profile_data.get("telegram_bot_token", ""),
+        "TELEGRAM_CHAT_ID": profile_data.get("telegram_chat_id", ""),
     }
     _update_env_file(env_updates)
     importlib.reload(config.secrets)

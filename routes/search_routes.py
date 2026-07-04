@@ -196,11 +196,19 @@ def api_assist_apply():
                     api_key = getattr(config.profile, "GEMINI_API_KEY", "")
                     if not api_key:
                         return "UNKNOWN"
+                    prompt = f"{system_prompt}\n\nUser Question:\n{user_prompt}"
+                    
+                    from core.llm_cache import get_cached_response, set_cached_response
+                    cached_val = get_cached_response(prompt, "gemini-2.5-flash")
+                    if cached_val is not None:
+                        return cached_val
+                        
                     genai.configure(api_key=api_key)
                     model = genai.GenerativeModel("gemini-2.5-flash")
-                    prompt = f"{system_prompt}\n\nUser Question:\n{user_prompt}"
                     response = model.generate_content(prompt)
-                    return response.text.strip()
+                    text = response.text.strip()
+                    set_cached_response(prompt, text, "gemini-2.5-flash")
+                    return text
                     
                 def ask_human_non_blocking(label: str, field_type: str, options: list) -> str:
                     from qa_store import record_unanswered
@@ -320,47 +328,53 @@ def api_assist_apply():
             while True:
                 time.sleep(1)
                 try:
+                    # Check if browser was closed entirely
                     _ = driver.current_url
                 except Exception:
                     bot_log("  [ASSIST] Browser closed by user.")
                     break
 
-                # 1. Handle tab auto-switching if user opened a new tab/window
-                try:
-                    if len(driver.window_handles) > 0 and driver.current_window_handle != driver.window_handles[-1]:
-                        driver.switch_to.window(driver.window_handles[-1])
-                        bot_log(f"  [ASSIST] Followed redirect to tab: {driver.current_url}")
-                except Exception:
-                    pass
+                with _assist_lock:
+                    handles = list(driver.window_handles)
 
-                # 2. Inject Copilot overlay and change listener if missing
-                try:
-                    driver.execute_script(copilot_html)
-                    driver.execute_script(js_learning_listener)
-                except Exception:
-                    pass
+                triggered_action = None
+                triggered_handle = None
 
-                # 3. Read captured learned answers from user corrections
-                try:
-                    learned = driver.execute_script("return window.jobBotLearnedAnswers;")
-                    if learned:
-                        driver.execute_script("window.jobBotLearnedAnswers = {};")
-                        from qa_store import save_answer
-                        for label, value in learned.items():
-                            if label and value:
-                                bot_log(f"  [LEARNED] Captured user input: '{label}' -> '{value}'")
-                                save_answer(label, value)
-                except Exception:
-                    pass
+                # Iterate through all open tabs/windows to inject overlay and scan for clicks/inputs
+                for handle in handles:
+                    try:
+                        driver.switch_to.window(handle)
+                        
+                        # 1. Inject Copilot overlay and listener if missing
+                        driver.execute_script(copilot_html)
+                        driver.execute_script(js_learning_listener)
+                        
+                        # 2. Read captured learned answers from user corrections on this tab
+                        learned = driver.execute_script("return window.jobBotLearnedAnswers;")
+                        if learned:
+                            driver.execute_script("window.jobBotLearnedAnswers = {};")
+                            from qa_store import save_answer
+                            for label, value in learned.items():
+                                if label and value:
+                                    bot_log(f"  [LEARNED] Captured user input on tab [{handle[:6]}]: '{label}' -> '{value}'")
+                                    save_answer(label, value)
 
-                # 4. Check for button clicks
-                try:
-                    action = driver.execute_script("return window.jobBotAction;")
-                    if action:
-                        driver.execute_script("window.jobBotAction = null;")
+                        # 3. Check for button clicks on this tab
+                        action = driver.execute_script("return window.jobBotAction;")
+                        if action:
+                            triggered_action = action
+                            triggered_handle = handle
+                            driver.execute_script("window.jobBotAction = null;")
+                    except Exception:
+                        pass
 
-                        if action == "fill":
-                            bot_log("  [ASSIST] Auto-Fill requested via Copilot")
+                # 4. Execute action if triggered on any tab/window
+                if triggered_action and triggered_handle:
+                    try:
+                        driver.switch_to.window(triggered_handle)
+                        
+                        if triggered_action == "fill":
+                            bot_log(f"  [ASSIST] Auto-Fill requested on tab [{triggered_handle[:6]}]")
                             try:
                                 def fill_current_context():
                                     # Tag labels to inputs for JS listener
@@ -459,7 +473,7 @@ def api_assist_apply():
                                 except Exception:
                                     pass
 
-                                bot_log(f"  [ASSIST] Auto-filled {tot} fields across window and frames!")
+                                bot_log(f"  [ASSIST] Auto-filled {tot} fields across window and frames on tab [{triggered_handle[:6]}]!")
                             except Exception as fill_err:
                                 bot_log(f"  [WARN] Auto-Fill action failed: {fill_err}")
                                 try:
@@ -468,8 +482,8 @@ def api_assist_apply():
                                 except Exception:
                                     pass
 
-                        elif action == "resume":
-                            bot_log("  [ASSIST] Resume Upload requested via Copilot")
+                        elif triggered_action == "resume":
+                            bot_log(f"  [ASSIST] Resume Upload requested via Copilot on tab [{triggered_handle[:6]}]")
                             try:
                                 import config.profile
                                 importlib.reload(config.profile)
@@ -519,8 +533,8 @@ def api_assist_apply():
                                 except Exception:
                                     pass
 
-                        elif action == "next":
-                            bot_log("  [ASSIST] Next Step requested via Copilot")
+                        elif triggered_action == "next":
+                            bot_log(f"  [ASSIST] Next Step requested via Copilot on tab [{triggered_handle[:6]}]")
                             try:
                                 from careers_bot import _click_next_or_submit
                                 res = _click_next_or_submit(driver)
@@ -553,9 +567,8 @@ def api_assist_apply():
                                     driver.execute_script("document.getElementById('copilot-status').style.color = '#f87171';")
                                 except Exception:
                                     pass
-
-                except Exception as ex:
-                    bot_log(f"  [WARN] Copilot action execution failed: {ex}")
+                    except Exception as ex:
+                        bot_log(f"  [WARN] Copilot action execution failed on tab [{triggered_handle[:6]}]: {ex}")
 
         except Exception as e:
             bot_log(f"  [ERROR] Assist failed: {e}")

@@ -7,24 +7,24 @@ import importlib
 import config.profile
 import config.secrets
 
-_alert_buffer = []
-_buffering_enabled = False
+import sys
+if not hasattr(sys, "_job_bot_alert_buffer"):
+    sys._job_bot_alert_buffer = []
+if not hasattr(sys, "_job_bot_buffering_enabled"):
+    sys._job_bot_buffering_enabled = False
 
 def enable_buffering():
-    global _alert_buffer, _buffering_enabled
-    _alert_buffer = []
-    _buffering_enabled = True
+    sys._job_bot_alert_buffer = []
+    sys._job_bot_buffering_enabled = True
     print("[NOTIFIER] Session buffering enabled. Alerts will be compiled into a single report.")
 
 def disable_buffering():
-    global _buffering_enabled
-    _buffering_enabled = False
+    sys._job_bot_buffering_enabled = False
 
 def send_session_report() -> None:
-    global _alert_buffer, _buffering_enabled
-    _buffering_enabled = False  # Temporarily disable to bypass buffering on send
+    sys._job_bot_buffering_enabled = False  # Temporarily disable to bypass buffering on send
     
-    if not _alert_buffer:
+    if not sys._job_bot_alert_buffer:
         print("[NOTIFIER] No alerts buffered during this session.")
         return
         
@@ -35,18 +35,18 @@ def send_session_report() -> None:
     body_parts = [
         "🤖 JOB HUNT BOT - SESSION SUMMARY REPORT",
         f"Generated: {now_str}",
-        f"Total Alerts: {len(_alert_buffer)}",
+        f"Total Alerts: {len(sys._job_bot_alert_buffer)}",
         "=" * 50,
         ""
     ]
-    for i, msg in enumerate(_alert_buffer, 1):
+    for i, msg in enumerate(sys._job_bot_alert_buffer, 1):
         body_parts.append(f"[{i}] {msg.strip()}")
         body_parts.append("-" * 50)
         body_parts.append("")
         
     report_body = "\n".join(body_parts)
     send_alert(subject, report_body)
-    _alert_buffer = []
+    sys._job_bot_alert_buffer = []
 
 def send_telegram_alert(message: str) -> bool:
     """Send a Telegram notification using urllib."""
@@ -98,9 +98,8 @@ def send_email_alert(subject: str, message: str) -> bool:
 
 def send_alert(subject: str, message: str) -> None:
     """Sends notifications to all enabled channels in parallel thread."""
-    global _alert_buffer, _buffering_enabled
-    if _buffering_enabled:
-        _alert_buffer.append(f"{subject}\n{message}")
+    if getattr(sys, "_job_bot_buffering_enabled", False):
+        sys._job_bot_alert_buffer.append(f"{subject}\n{message}")
         print(f"[NOTIFIER] Buffered alert: {subject}")
         return
 

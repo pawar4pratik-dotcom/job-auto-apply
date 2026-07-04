@@ -12,7 +12,39 @@ from selenium.webdriver.common.keys import Keys
 from browser import create_browser, wait_for, click, fill, human_pause, scroll_down, dom_signature
 from filter import should_apply
 from tracker import log_application
-from config.profile import PROFILE, SEARCH_KEYWORDS, SEARCH_LOCATIONS, TARGET_COMPANIES, TECH_EXPERIENCE, WORK_PREFERENCES, COVER_LETTER, MY_SKILLS
+import config.profile
+
+BLACKLISTED_MODELS = set()
+
+# Initial placeholder globals
+PROFILE = {}
+SEARCH_KEYWORDS = []
+SEARCH_LOCATIONS = []
+TARGET_COMPANIES = []
+TECH_EXPERIENCE = {}
+WORK_PREFERENCES = {}
+COVER_LETTER = ""
+MY_SKILLS = []
+
+def reload_profile_globals():
+    global PROFILE, SEARCH_KEYWORDS, SEARCH_LOCATIONS, TARGET_COMPANIES, TECH_EXPERIENCE, WORK_PREFERENCES, COVER_LETTER, MY_SKILLS
+    try:
+        import config.profile
+        import importlib
+        importlib.reload(config.profile)
+        PROFILE = getattr(config.profile, "PROFILE", {})
+        SEARCH_KEYWORDS = getattr(config.profile, "SEARCH_KEYWORDS", [])
+        SEARCH_LOCATIONS = getattr(config.profile, "SEARCH_LOCATIONS", [])
+        TARGET_COMPANIES = getattr(config.profile, "TARGET_COMPANIES", [])
+        TECH_EXPERIENCE = getattr(config.profile, "TECH_EXPERIENCE", {})
+        WORK_PREFERENCES = getattr(config.profile, "WORK_PREFERENCES", {})
+        COVER_LETTER = getattr(config.profile, "COVER_LETTER", "")
+        MY_SKILLS = getattr(config.profile, "MY_SKILLS", [])
+    except Exception:
+        pass
+
+# Populate initial values
+reload_profile_globals()
 
 APPLIED_JOBS_LOG = "logs/applied_linkedin.txt"
 
@@ -49,14 +81,76 @@ def save_applied_job(job_id):
         f.write(job_id + "\n")
 
 
+def _skipped_jobs_path() -> str:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        import config.profile
+        active_profile = getattr(config.profile, "ACTIVE_PROFILE_NAME", "")
+        if active_profile:
+            filename = f"logs/skipped_linkedin_{active_profile}.txt"
+        else:
+            filename = "logs/skipped_linkedin.txt"
+    except Exception:
+        filename = "logs/skipped_linkedin.txt"
+    return os.path.join(script_dir, filename)
+
+
+def load_skipped_jobs():
+    """Load set of already-skipped job IDs to speed up future runs."""
+    log_path = _skipped_jobs_path()
+    if os.path.exists(log_path):
+        with open(log_path, encoding="utf-8") as f:
+            return set(f.read().splitlines())
+    return set()
+
+
+def save_skipped_job(job_id):
+    if not job_id:
+        return
+    log_path = _skipped_jobs_path()
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    try:
+        skipped = load_skipped_jobs()
+        if job_id not in skipped:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(job_id + "\n")
+    except Exception:
+        pass
+
+
+def extract_job_id_from_url(url: str) -> str:
+    if not url:
+        return ""
+    m = re.search(r'/jobs/view/(\d+)', url)
+    if m:
+        return m.group(1)
+    m = re.search(r'[?&]currentJobId=(\d+)', url)
+    if m:
+        return m.group(1)
+    m = re.search(r'(\d{9,12})', url)
+    if m:
+        return m.group(1)
+    return ""
+
+
 def login(driver, log_fn=print):
     """Log into LinkedIn."""
+    email = PROFILE.get("linkedin_email", "").strip()
+    password = PROFILE.get("linkedin_password", "").strip()
+    if not email or not password:
+        log_fn("[ERROR] LinkedIn credentials (email or password) are empty. Please configure them in the Profiles tab.")
+        return False
+
     log_fn("[LOGIN] Logging into LinkedIn...")
     driver.get("https://www.linkedin.com/login")
     human_pause(2, 3)
 
-    fill(driver, By.ID, "username", PROFILE["linkedin_email"])
-    fill(driver, By.ID, "password", PROFILE["linkedin_password"])
+    if "feed" in driver.current_url or "mynetwork" in driver.current_url or is_logged_in(driver):
+        log_fn("[OK] LinkedIn already logged in via active session.")
+        return True
+
+    fill(driver, By.ID, "username", email)
+    fill(driver, By.ID, "password", password)
     click(driver, By.XPATH, "//button[@type='submit']")
     human_pause(3, 5)
 
@@ -80,36 +174,75 @@ def login(driver, log_fn=print):
     return False
 
 
+def is_logged_in(driver) -> bool:
+    """Helper to detect if the browser is currently logged into LinkedIn."""
+    try:
+        curr_url = driver.current_url.lower()
+        if "feed" in curr_url or "mynetwork" in curr_url or "messaging" in curr_url:
+            return True
+        me_el = driver.find_elements(By.CSS_SELECTOR, ".global-nav__me, #global-nav-typeahead, button[class*='nav__button-sidebar']")
+        if any(el.is_displayed() for el in me_el):
+            return True
+        sign_in_el = driver.find_elements(By.XPATH, "//a[contains(text(), 'Sign in') or contains(text(), 'Log in')]")
+        if any(el.is_displayed() for el in sign_in_el):
+            return False
+        return len(me_el) > 0
+    except Exception:
+        return False
+
+
 def search_jobs(driver, keyword, location, log_fn=print):
     """Search for jobs on LinkedIn."""
+    # Anti-bot humanized pacing: wait before starting a new search
+    human_pause(2.0, 4.0)
     log_fn(f"\n🔍 Searching: '{keyword}' in '{location}'")
 
+    import urllib.parse
     search_url = (
         f"https://www.linkedin.com/jobs/search/?"
-        f"keywords={keyword.replace(' ', '%20')}"
-        f"&location={location.replace(' ', '%20')}"
+        f"keywords={urllib.parse.quote(keyword)}"
+        f"&location={urllib.parse.quote(location)}"
         f"&f_AL=true"  # Easy Apply filter ON
         f"&f_TPR=r604800"  # Past 7 days only
         f"&sortBy=DD"  # Sort by most recent
     )
     driver.get(search_url)
-    human_pause(3, 5)
+    human_pause(2.5, 4.0)
+
+    # Check if we got logged out
+    if not is_logged_in(driver):
+        log_fn("[INFO] Detected logged-out state after search navigation. Triggering self-healing login...")
+        login(driver, log_fn=log_fn)
+        driver.get(search_url)
+        human_pause(2.0, 4.0)
+
+    # Challenge / verification wall detection
+    for check in range(6):
+        curr_url = driver.current_url.lower()
+        if "challenge" in curr_url or "checkpoint" in curr_url or "security" in curr_url:
+            log_fn("[WARNING] LinkedIn verification/CAPTCHA detected! Please resolve it manually in the Chrome window.")
+            time.sleep(10)
+        else:
+            break
 
 
 def get_job_cards(driver):
     """Return list of job card elements on current search page."""
     # Progressive scrolling to load lazy-loaded cards
-    for _ in range(3):
-        scroll_down(driver, 600)
-        human_pause(0.6, 1.0)
+    for _ in range(2):
+        scroll_down(driver, 800)
+        human_pause(0.4, 0.8)
 
     # Try multiple selectors in order of preference
     for selector in [
+        "div[data-row-unique-id]",
+        ".scaffold-layout__list-item",
         ".job-card-container",
         "[data-job-id]",
         ".jobs-search-results__list-item",
-        ".scaffold-layout__list-item",
         "li.jobs-search-results__list-item",
+        "div[class*='job-card-container']",
+        "div[class*='job-card-list__entity-lockup']",
     ]:
         cards = driver.find_elements(By.CSS_SELECTOR, selector)
         if cards:
@@ -126,6 +259,18 @@ def get_job_details(driver, card, log_fn=print):
         job_id = card.get_attribute("data-job-id") or card.get_attribute("data-entity-urn") or ""
         if job_id.startswith("urn:li:fs_normalizedJobPosting:"):
             job_id = job_id.split(":")[-1]
+
+        if not job_id:
+            for sel in ["a.job-card-list__title", "a.job-card-container__link", "a[class*='job-card']", "a"]:
+                try:
+                    link = card.find_element(By.CSS_SELECTOR, sel)
+                    href = link.get_attribute("href") or ""
+                    extracted = extract_job_id_from_url(href)
+                    if extracted:
+                        job_id = extracted
+                        break
+                except Exception:
+                    pass
 
         # 2. Find a specific clickable element inside the card rather than clicking the outer card itself
         click_target = None
@@ -234,12 +379,25 @@ def get_job_details(driver, card, log_fn=print):
 
         # ── Description ────────────────────────────────────────────────────
         description = ""
-        desc_selectors = ["#job-details", ".jobs-description__content", ".jobs-box__html-content", ".description__text"]
+        desc_selectors = [
+            "#job-details",
+            ".jobs-description__content",
+            ".jobs-box__html-content",
+            ".description__text",
+            ".jobs-description",
+            "[class*='jobs-description']",
+            ".job-desc",
+            ".jobs-box"
+        ]
         for sel in desc_selectors:
             try:
-                el = wait_for(driver, By.CSS_SELECTOR, sel, timeout=3)
-                if el:
-                    description = el.text.strip()
+                els = driver.find_elements(By.CSS_SELECTOR, sel)
+                for el in els:
+                    desc_text = driver.execute_script("return (arguments[0].innerText || arguments[0].textContent || '').strip();", el)
+                    if desc_text and len(desc_text) > 50:
+                        description = desc_text
+                        break
+                if description:
                     break
             except Exception:
                 pass
@@ -268,6 +426,12 @@ def get_job_details(driver, card, log_fn=print):
                 break
 
         url = driver.current_url
+
+        if not job_id:
+            job_id = extract_job_id_from_url(url)
+
+        if job_id:
+            url = f"https://www.linkedin.com/jobs/view/{job_id}/"
 
         if not title:
             title = "Unknown Role"
@@ -349,8 +513,13 @@ def _has_experience_keyword(label: str) -> bool:
     return False
 
 
+_gemini_quota_exhausted = False
+
 def ask_gemini_resolver(question: str, field_type: str = "text") -> str:
-    """Uses Gemini 1.5 Flash to intelligently answer screening questions."""
+    """Uses Gemini 1.5/2.0/2.5 Flash to intelligently answer screening questions."""
+    global _gemini_quota_exhausted
+    if _gemini_quota_exhausted:
+        return ""
     import config.profile
     api_key = getattr(config.profile, "GEMINI_API_KEY", None)
     if not api_key:
@@ -382,13 +551,37 @@ def ask_gemini_resolver(question: str, field_type: str = "text") -> str:
         - If it's yes/no, return exactly "yes" or "no".
         """
         
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(prompt)
-        ans = response.text.strip()
-        # Clean markdown formatting or quotes if any
-        if ans.startswith("`") or ans.endswith("`") or ans.startswith('"') or ans.endswith('"'):
-            ans = ans.replace("`", "").replace('"', '').strip()
-        return ans
+        import time
+        models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+        
+        for model_name in models_to_try:
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    response = model.generate_content(prompt)
+                    ans = response.text.strip()
+                    if ans.startswith("`") or ans.endswith("`") or ans.startswith('"') or ans.endswith('"'):
+                        ans = ans.replace("`", "").replace('"', '').strip()
+                    return ans
+                except Exception as e:
+                    err_msg = str(e).lower()
+                    is_rate_limit = any(x in err_msg for x in ["429", "quota", "resourceexhausted", "rate", "limit"])
+                    if is_rate_limit:
+                        if "quota" in err_msg or "limit exceeded" in err_msg or "daily" in err_msg:
+                            print(f"  [AI-WARN] Gemini daily/quota limit hit. Disabling Gemini for this session to run fast.")
+                            _gemini_quota_exhausted = True
+                            return ""
+                        sleep_time = (attempt + 1) * 5.0
+                        print(f"  [AI-WARN] Model {model_name} rate-limited. Sleeping {sleep_time}s before retry... (Attempt {attempt+1}/{retries})")
+                        time.sleep(sleep_time)
+                        continue
+                    else:
+                        print(f"  [AI-WARN] Model {model_name} failed: {e}")
+                        break
+            if _gemini_quota_exhausted:
+                return ""
+        raise Exception("All Gemini models rate-limited or failed.")
     except Exception as e:
         print(f"  [AI-ERROR] Gemini resolver failed: {e}")
         return ""
@@ -397,13 +590,13 @@ def ask_gemini_resolver(question: str, field_type: str = "text") -> str:
 def smart_answer_for_label(label_text):
     """
     Given a label string, return the best text answer value using profile data.
-    Returns None if no smart match found. AI is used as LAST resort.
+    Returns None if no smart match found. (Local rules only; caller handles AI fallback).
     """
     label = label_text.lower()
 
     # --- Technology-specific experience (e.g. "Years of Python experience" or just "Python") ---
     for tech, years in TECH_EXPERIENCE.items():
-        if tech in label:
+        if re.search(r'\b' + re.escape(tech) + r'\b', label):
             if _has_year_keyword(label) or _has_experience_keyword(label) or len(label.strip()) <= len(tech) + 3:
                 return years
 
@@ -453,18 +646,13 @@ def smart_answer_for_label(label_text):
         exp = PROFILE.get('total_experience_years', '5')
         return COVER_LETTER.format(exp=exp, name=name)
 
-    # ── AI Fallback (LAST resort — only if no profile rule matched) ──
-    ai_ans = ask_gemini_resolver(label_text, "text")
-    if ai_ans:
-        return ai_ans
-
     return None
 
 
 def smart_radio_answer(legend_text):
     """
     Return 'yes' or 'no' for a radio button question based on question text and WORK_PREFERENCES.
-    AI is used as LAST resort.
+    (Local rules only; caller handles AI fallback).
     """
     q = legend_text.lower()
 
@@ -502,16 +690,6 @@ def smart_radio_answer(legend_text):
     if any(k in q for k in ["agree", "acknowledge", "confirm", "certify"]):
         return "yes"
 
-    # ── AI Fallback (LAST resort — only if no rule matched) ──
-    ai_ans = ask_gemini_resolver(legend_text, "radio")
-    if ai_ans:
-        ans_lower = ai_ans.lower().strip()
-        if "yes" in ans_lower:
-            return "yes"
-        if "no" in ans_lower:
-            return "no"
-        return ai_ans
-
     # Default: None (check QA store / record unanswered instead of guessing yes)
     return None
 
@@ -533,7 +711,7 @@ def smart_dropdown_answer(driver, dropdown_el, label_text, log_fn=print, portal=
                 save_auto_answered(label_text, txt, portal=portal)
 
         # 1. Check Q&A store first (user overrides take precedence)
-        qa_ans = get_answer(label_text)
+        qa_ans = get_answer(label_text, driver=driver)
         if qa_ans == "__MANUAL__":
             log_fn(f"  [FORM] Dropdown '{label_text}' is marked as MANUAL. Skipping auto-fill.")
             return
@@ -627,6 +805,41 @@ def smart_dropdown_answer(driver, dropdown_el, label_text, log_fn=print, portal=
                         select_and_log(i, text, is_auto_rule=True)
                         return
 
+        # Dates (From / To / Start / End)
+        if "from" in label or "start" in label:
+            if "year" in label:
+                for i, text in options:
+                    if "2022" in text or "2021" in text or "2020" in text:
+                        select_and_log(i, text, is_auto_rule=True)
+                        return
+            elif "month" in label:
+                for i, text in options:
+                    if "june" in text.lower() or "06" in text or "jun" in text.lower():
+                        select_and_log(i, text, is_auto_rule=True)
+                        return
+                        
+        if "to" in label or "end" in label:
+            if "year" in label:
+                for i, text in options:
+                    if "present" in text.lower() or "current" in text.lower() or "2026" in text or "2025" in text:
+                        select_and_log(i, text, is_auto_rule=True)
+                        return
+            elif "month" in label:
+                for i, text in options:
+                    if "present" in text.lower() or "current" in text.lower() or "june" in text.lower() or "06" in text or "jun" in text.lower():
+                        select_and_log(i, text, is_auto_rule=True)
+                        return
+
+        # Experience / Years of experience general rule
+        if "experience" in label and ("year" in label or "yrs" in label):
+            years_val = str(PROFILE.get("total_experience_years", "4"))
+            for i, text in options:
+                import re
+                nums = re.findall(r'\d+', text)
+                if nums and str(years_val) in nums:
+                    select_and_log(i, text, is_auto_rule=True)
+                    return
+
         # ── AI Fallback (LAST resort — only if no rule matched) ──
         import config.profile
         if getattr(config.profile, "GEMINI_API_KEY", None):
@@ -707,7 +920,7 @@ def answer_questions(driver, portal="LinkedIn", log_fn=print):
                     continue
                 
                 # A. Try persistent Q&A store first (user overrides take precedence)
-                answer = get_answer(label) if label else ""
+                answer = get_answer(label, driver=driver) if label else ""
 
                 if answer == "__MANUAL__":
                     log_fn(f"  [FORM] Field '{label}' is marked as MANUAL. Skipping auto-fill.")
@@ -720,7 +933,14 @@ def answer_questions(driver, portal="LinkedIn", log_fn=print):
                     if answer:
                         save_auto_answered(label, answer, portal=portal)
 
-                # C. Record unanswered question if still unresolved
+                # C. Fallback to Gemini AI resolver (expensive/slow)
+                if not answer and label:
+                    from core.semantic_qa import resolve_semantic_answer
+                    answer = resolve_semantic_answer(label, portal=portal, driver=driver)
+                    if answer:
+                        save_auto_answered(label, answer, portal=portal)
+
+                # D. Record unanswered question if still unresolved
                 if not answer and label:
                     record_unanswered(label, portal=portal)
 
@@ -744,9 +964,25 @@ def answer_questions(driver, portal="LinkedIn", log_fn=print):
             try:
                 legend_els = group.find_elements(By.CSS_SELECTOR, "legend, label.fb-text-selectable__option")
                 legend = legend_els[0].text if legend_els else ""
+                if not legend:
+                    try:
+                        legend = group.get_attribute("aria-label") or ""
+                    except Exception:
+                        pass
+                if not legend:
+                    try:
+                        spans = group.find_elements(By.CSS_SELECTOR, "span, p")
+                        for sp in spans:
+                            t = sp.text.strip()
+                            if t and len(t) > 3:
+                                legend = t
+                                break
+                    except Exception:
+                        pass
+                legend = legend.strip()
                 
                 # Check Q&A store first (user overrides take precedence)
-                target_answer = get_answer(legend) if legend else ""
+                target_answer = get_answer(legend, driver=driver) if legend else ""
                 
                 if target_answer == "__MANUAL__":
                     log_fn(f"  [FORM] Radio group '{legend}' is marked as MANUAL. Skipping select.")
@@ -757,13 +993,22 @@ def answer_questions(driver, portal="LinkedIn", log_fn=print):
                     target_answer = smart_radio_answer(legend)
                     if target_answer:
                         save_auto_answered(legend, target_answer, portal=portal)
+
+                # Fallback to Gemini AI resolver
+                if not target_answer and legend:
+                    from core.semantic_qa import resolve_semantic_answer
+                    target_answer = resolve_semantic_answer(legend, portal=portal, driver=driver)
+                    if target_answer:
+                        save_auto_answered(legend, target_answer, portal=portal)
                     
                 # If still no answer, record it to Q&A store and skip
-                if not target_answer and legend:
-                    log_fn(f"  [FORM] No match for radio group '{legend}'. Recording as unanswered.")
-                    record_unanswered(legend, portal=portal)
+                if not target_answer:
+                    if legend:
+                        log_fn(f"  [FORM] No match for radio group '{legend}'. Recording as unanswered.")
+                        record_unanswered(legend, portal=portal)
                     continue
 
+                target_lower = target_answer.lower().strip()
                 radios = group.find_elements(By.CSS_SELECTOR, "input[type='radio']")
                 for radio in radios:
                     if radio.is_selected():
@@ -775,7 +1020,19 @@ def answer_questions(driver, portal="LinkedIn", log_fn=print):
                     if not label_els:
                         continue
                     label_text = label_els[0].text.strip().lower()
-                    if label_text == target_answer or target_answer in label_text:
+                    
+                    matched = False
+                    if label_text == target_lower:
+                        matched = True
+                    elif target_lower in label_text:
+                        if target_lower in ["yes", "no"]:
+                            import re
+                            if re.search(r'\b' + re.escape(target_lower) + r'\b', label_text):
+                                matched = True
+                        else:
+                            matched = True
+                            
+                    if matched:
                         driver.execute_script("arguments[0].click();", radio)
                         human_pause(0.2, 0.4)
                         log_fn(f"  [FORM] Radio selected '{target_answer}' for '{legend}'")
@@ -824,12 +1081,19 @@ def answer_questions(driver, portal="LinkedIn", log_fn=print):
                 if not legend:
                     continue
                 
-                target_answer = get_answer(legend) or smart_radio_answer(legend)
+                target_answer = get_answer(legend, driver=driver) or smart_radio_answer(legend)
+                if not target_answer:
+                    from core.semantic_qa import resolve_semantic_answer
+                    target_answer = resolve_semantic_answer(legend, portal=portal, driver=driver)
+                    if target_answer:
+                        save_auto_answered(legend, target_answer, portal=portal)
+
                 if not target_answer:
                     log_fn(f"  [FORM] No match for fallback radio group '{legend}'. Recording as unanswered.")
                     record_unanswered(legend, portal=portal)
                     continue
                 
+                target_lower = target_answer.lower().strip()
                 for radio in radios:
                     rid = radio.get_attribute("id")
                     label_text = ""
@@ -843,7 +1107,18 @@ def answer_questions(driver, portal="LinkedIn", log_fn=print):
                         except Exception:
                             pass
                     
-                    if label_text == target_answer or target_answer in label_text:
+                    matched = False
+                    if label_text == target_lower:
+                        matched = True
+                    elif target_lower in label_text:
+                        if target_lower in ["yes", "no"]:
+                            import re
+                            if re.search(r'\b' + re.escape(target_lower) + r'\b', label_text):
+                                matched = True
+                        else:
+                            matched = True
+                    
+                    if matched:
                         driver.execute_script("arguments[0].click();", radio)
                         human_pause(0.2, 0.4)
                         log_fn(f"  [FORM] Radio selected '{target_answer}' for '{legend}'")
@@ -1043,6 +1318,7 @@ def correct_validation_errors(driver, log_fn=print):
     e.g. if error is 'Enter a whole number', round decimal values to integers.
     if error is 'Enter a decimal number', convert text like '15 days' to '15'.
     """
+    errors_corrected = False
     try:
         error_selectors = [
             ".artdeco-inline-feedback--error",
@@ -1058,10 +1334,23 @@ def correct_validation_errors(driver, log_fn=print):
                         continue
                     err_text = err.text.lower()
                     
-                    parent = driver.execute_script("return arguments[0].parentElement;", err)
-                    if not parent:
-                        continue
-                    field = parent.find_element(By.CSS_SELECTOR, "input, textarea, select")
+                    # Traverse up to 4 parent elements to locate the input field
+                    field = None
+                    curr = err
+                    for _ in range(4):
+                        try:
+                            curr = driver.execute_script("return arguments[0].parentElement;", curr)
+                            if not curr: break
+                            fields = curr.find_elements(By.CSS_SELECTOR, "input, textarea, select")
+                            if fields:
+                                # Find the first displayed input
+                                for f in fields:
+                                    if f.is_displayed():
+                                        field = f
+                                        break
+                                if field: break
+                        except Exception:
+                            pass
                     if not field or not field.is_displayed():
                         continue
                         
@@ -1099,6 +1388,7 @@ def correct_validation_errors(driver, log_fn=print):
                             rounded = str(round(num_val))
                             force_set_value(field, rounded)
                             log_fn(f"  [FORM-FIX] Rounded decimal value '{val}' -> '{rounded}' due to whole number validation error.")
+                            errors_corrected = True
                             
                     # 2. Decimal number error: "decimal number"
                     elif any(w in err_text for w in ["decimal", "number", "numeric", "larger than"]):
@@ -1108,10 +1398,12 @@ def correct_validation_errors(driver, log_fn=print):
                             num_val = num_match.group(0)
                             force_set_value(field, num_val)
                             log_fn(f"  [FORM-FIX] Extracted numeric value '{val}' -> '{num_val}' due to numeric validation error.")
+                            errors_corrected = True
                 except Exception:
                     pass
     except Exception:
         pass
+    return errors_corrected
 
 
 def fill_easy_apply_form(driver, job_description="", company="", role="", log_fn=print):
@@ -1170,7 +1462,9 @@ def fill_easy_apply_form(driver, job_description="", company="", role="", log_fn
         last_sig, stall = None, 0
         for step in range(20):
             answer_questions(driver, log_fn=log_fn)
-            correct_validation_errors(driver, log_fn=log_fn)
+            errors_fixed = correct_validation_errors(driver, log_fn=log_fn)
+            if errors_fixed:
+                human_pause(0.3, 0.5)
 
             # Auto-fill Cover Letter if present
             try:
@@ -1187,10 +1481,18 @@ def fill_easy_apply_form(driver, job_description="", company="", role="", log_fn
                             matched_skills = MY_SKILLS[:3]
                         skills_str = ", ".join(matched_skills[:3])
                         
+                        # Dynamically adapt cover letter to applicant's primary background role
+                        current_title = "Data Engineering"
+                        work_exp = PROFILE.get("work_experience", [])
+                        if work_exp and isinstance(work_exp, list):
+                            first_job = work_exp[0]
+                            if isinstance(first_job, dict) and first_job.get("job_title"):
+                                current_title = first_job["job_title"]
+
                         cover_text = (
                             f"Dear Hiring Manager,\n\n"
                             f"I am writing to express my strong interest in the {role} position at {company}. "
-                            f"With {PROFILE.get('total_experience_years', '4.6')} years of experience in data engineering, "
+                            f"With {PROFILE.get('total_experience_years', '4.6')} years of experience as a {current_title}, "
                             f"I have built scalable pipelines and data architectures. I noticed your team leverages "
                             f"technologies like {skills_str}, which directly aligns with my hands-on expertise with "
                             f"AWS, Snowflake, and Python.\n\n"
@@ -1286,38 +1588,80 @@ def fill_easy_apply_form(driver, job_description="", company="", role="", log_fn
                     discard_current_application(driver, log_fn=log_fn)
                     return False
 
-            # Click Next / Continue / Review
-            sig = dom_signature(driver)
-            advanced = (
-                click(driver, By.CSS_SELECTOR, "button[aria-label='Continue to next step']", timeout=1) or
-                click(driver, By.CSS_SELECTOR, "button[aria-label='Review your application']", timeout=1) or
-                click(driver, By.CSS_SELECTOR, "button[aria-label='Next step']", timeout=1) or
-                click(driver, By.XPATH, "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')]", timeout=1) or
-                click(driver, By.XPATH, "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')]", timeout=1) or
-                click(driver, By.XPATH, "//button[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'review')]", timeout=1)
-            )
+            # Click Next / Continue / Review using a fast, combined visible element checks to avoid sequential timeouts
+            next_btn = None
+            for sel in [
+                "button[aria-label='Continue to next step']",
+                "button[aria-label='Review your application']",
+                "button[aria-label='Next step']",
+                "button[class*='button-next']",
+                "button[class*='button-continue']"
+            ]:
+                try:
+                    el = driver.find_element(By.CSS_SELECTOR, sel)
+                    if el.is_displayed() and el.is_enabled():
+                        next_btn = el
+                        break
+                except Exception:
+                    pass
+            
+            if not next_btn:
+                try:
+                    xpath_queries = [
+                        "//button[contains(translate(text(), 'NEXT', 'next'), 'next')]",
+                        "//button[contains(translate(text(), 'CONTINUE', 'continue'), 'continue')]",
+                        "//button[contains(translate(text(), 'REVIEW', 'review'), 'review')]",
+                        "//button[contains(translate(., 'NEXT', 'next'), 'next')]",
+                        "//button[contains(translate(., 'CONTINUE', 'continue'), 'continue')]",
+                        "//button[contains(translate(., 'REVIEW', 'review'), 'review')]"
+                    ]
+                    for x in xpath_queries:
+                        els = driver.find_elements(By.XPATH, x)
+                        for el in els:
+                            if el.is_displayed() and el.is_enabled():
+                                next_btn = el
+                                break
+                        if next_btn:
+                            break
+                except Exception:
+                    pass
+
+            advanced = False
+            if next_btn:
+                try:
+                    next_btn.click()
+                    advanced = True
+                except Exception:
+                    try:
+                        driver.execute_script("arguments[0].click();", next_btn)
+                        advanced = True
+                    except Exception:
+                        pass
+
+            # Transition wait to let DOM change settle if we clicked Next
+            if advanced:
+                human_pause(0.3, 0.6)
 
             new_sig = dom_signature(driver)
-            if new_sig == last_sig:
+            
+            # Increment stall mutually exclusively
+            if not advanced or new_sig == last_sig:
                 stall += 1
+                if not advanced:
+                    log_fn("  [FORM] Next button not found or could not click")
+                else:
+                    log_fn("  [FORM] Form DOM did not change after clicking Next")
             else:
                 stall = 0
+            
             last_sig = new_sig
 
             if stall >= 3:
-                log_fn("  [WARN] Form stalled — needs manual completion or has unanswered questions")
-                # Discard the application to avoid leaving it half-open
+                log_fn("  [WARN] Form stalled — could not advance or signature unchanged")
                 discard_current_application(driver, log_fn=log_fn)
                 return False
 
-            if not advanced:
-                stall += 1
-                if stall >= 3:
-                    log_fn("  [WARN] Could not advance form — no Next/Submit button found")
-                    discard_current_application(driver, log_fn=log_fn)
-                    return False
-
-            human_pause(0.4, 0.8)
+            human_pause(0.2, 0.4)
 
         return False
     except Exception as e:
@@ -1326,8 +1670,11 @@ def fill_easy_apply_form(driver, job_description="", company="", role="", log_fn
 
 def run_linkedin_bot(max_applications=20, headless=False, log_fn=print, stop_event=None, keywords=None, locations=None):
     log_fn("\n" + "="*55 + "\n  LINKEDIN AUTO-APPLY BOT\n" + "="*55)
-    if get_today_count("Applied") >= DAILY_LIMIT:
-        log_fn(f"[STOP] Daily limit of {DAILY_LIMIT} applications reached. Stopping.")
+    
+    reload_profile_globals()
+    daily_limit = getattr(config.profile, "DAILY_LIMIT", 50)
+    if get_today_count("Applied") >= daily_limit:
+        log_fn(f"[STOP] Daily limit of {daily_limit} applications reached. Stopping.")
         return
 
     # Clear any stale stop signal from a previous run
@@ -1336,13 +1683,15 @@ def run_linkedin_bot(max_applications=20, headless=False, log_fn=print, stop_eve
 
     log_fn("[INFO] Step 1/4: Launching Chrome browser... (this takes ~15-20 seconds)")
     try:
-        driver = create_browser(headless=headless, profile_name="linkedin")
+        from browser import SelfHealingDriver
+        driver = SelfHealingDriver(headless=headless, profile_name="linkedin")
     except Exception as e:
         log_fn(f"[ERROR] Failed to launch Chrome: {e}")
         return
 
     log_fn("[OK] Chrome browser launched successfully!")
     applied_jobs = load_applied_jobs()
+    skipped_jobs = load_skipped_jobs()
     total_applied = 0
     processed_urls_this_run = set()  # Dedup across keyword×location combos
     
@@ -1354,13 +1703,28 @@ def run_linkedin_bot(max_applications=20, headless=False, log_fn=print, stop_eve
         if not login(driver, log_fn=log_fn): return
 
         log_fn("[INFO] Step 3/4: Starting job search...")
+        search_count = 0
+        max_searches = 40  # Cap combinations to avoid LinkedIn rate-limit blocks
+        break_all_searches = False
+        
         for keyword in target_keywords:
+            if break_all_searches:
+                break
             for location in target_locations:
                 if stop_event and stop_event.is_set():
                     log_fn("[STOP] Stop signal received. Halting LinkedIn bot.")
+                    break_all_searches = True
                     break
-                if total_applied >= max_applications: break
+                if total_applied >= max_applications:
+                    break_all_searches = True
+                    break
+                    
+                if search_count >= max_searches:
+                    log_fn(f"[INFO] Capped at {max_searches} search combinations per session to avoid LinkedIn query rate limits.")
+                    break_all_searches = True
+                    break
                 
+                search_count += 1
                 search_jobs(driver, keyword, location, log_fn=log_fn)
                 
                 # Pagination: scan up to 3 pages per search
@@ -1390,18 +1754,47 @@ def run_linkedin_bot(max_applications=20, headless=False, log_fn=print, stop_eve
                     log_fn(f"[INFO] Step 4/4: Scanning job listings (page {page_num})...")
                     cards = get_job_cards(driver)
                     log_fn(f"  Found {len(cards)} job listings")
+                    if not cards:
+                        try:
+                            os.makedirs("logs", exist_ok=True)
+                            screenshot_path = "logs/linkedin_zero_listings.png"
+                            driver.save_screenshot(screenshot_path)
+                            log_fn(f"  [DEBUG] Saved screenshot to {screenshot_path}")
+                        except Exception as e:
+                            log_fn(f"  [DEBUG] Failed to save screenshot: {e}")
 
-                    for card in cards:
+                    for card_idx in range(len(cards)):
                         if stop_event and stop_event.is_set(): break
                         if total_applied >= max_applications: break
+
+                        # Re-locate card list to prevent stale element exceptions
+                        try:
+                            cards = get_job_cards(driver)
+                            if card_idx >= len(cards):
+                                break
+                            card = cards[card_idx]
+                        except Exception:
+                            continue
 
                         # ── Early duplicate check without clicking ────────────────
                         try:
                             job_id = card.get_attribute("data-job-id") or card.get_attribute("data-entity-urn") or ""
                             if job_id.startswith("urn:li:fs_normalizedJobPosting:"):
                                 job_id = job_id.split(":")[-1]
+
+                            if not job_id:
+                                for sel in ["a.job-card-list__title", "a.job-card-container__link", "a[class*='job-card']", ".job-card-list__title", "a"]:
+                                    try:
+                                        link = card.find_element(By.CSS_SELECTOR, sel)
+                                        href = link.get_attribute("href") or ""
+                                        extracted = extract_job_id_from_url(href)
+                                        if extracted:
+                                            job_id = extracted
+                                            break
+                                    except Exception:
+                                        pass
                                 
-                            if job_id and job_id in applied_jobs:
+                            if job_id and (job_id in applied_jobs or job_id in skipped_jobs):
                                 continue
                             if job_id and job_id in processed_urls_this_run:
                                 continue
@@ -1450,6 +1843,8 @@ def run_linkedin_bot(max_applications=20, headless=False, log_fn=print, stop_eve
                                 log_fn(f"\n[FAST FILTER SKIP] {card_company or 'Unknown'} -- {card_title}")
                                 log_fn(f"  Skip: {reason}")
                                 log_application(card_company, card_title, "LinkedIn", card_url, "Skipped", score, matched, skip_reason=reason, missing_skills=missing, decision=decision)
+                                if job_id:
+                                    save_skipped_job(job_id)
                                 continue
 
                         job_id, title, company, description, url, posted_date = get_job_details(driver, card, log_fn=log_fn)
@@ -1469,12 +1864,25 @@ def run_linkedin_bot(max_applications=20, headless=False, log_fn=print, stop_eve
                         if not do_apply or decision == "skip":
                             log_fn(f"  Skip: {reason}")
                             log_application(company, title, "LinkedIn", url, "Skipped", score, matched, skip_reason=reason, posted_date=posted_date, missing_skills=missing, decision=decision)
+                            if job_id:
+                                save_skipped_job(job_id)
                             continue
 
                         if decision == "review":
-                            log_fn(f"  [REVIEW QUEUE] {company} -- {title} ({score}%) - Queued for review")
-                            log_application(company, title, "LinkedIn", url, "Review", score, matched, skip_reason=reason, posted_date=posted_date, missing_skills=missing, decision=decision)
-                            save_applied_job(job_id)
+                            # For LinkedIn Easy Apply, auto-apply to review-threshold jobs too (low friction/no cost)
+                            log_fn(f"  [REVIEW -> AUTO] {score}% -- Auto-Applying...")
+                            success = fill_easy_apply_form(driver, job_description=description, company=company, role=title, log_fn=log_fn)
+                            if success:
+                                log_fn("  [SUCCESS] Successfully Applied!")
+                                log_application(company, title, "LinkedIn", url, "Applied", score, matched, posted_date=posted_date)
+                                save_applied_job(job_id)
+                                total_applied += 1
+                                human_pause(1.0, 2.0)
+                            else:
+                                log_fn("  [FAIL] Apply failed (requires manual completion)")
+                                log_application(company, title, "LinkedIn", url, "Manual Needed", score, matched, skip_reason="Form stalled", posted_date=posted_date)
+                                if job_id:
+                                    save_skipped_job(job_id)
                             continue
 
                         log_fn(f"  [MATCH] {score}% -- Auto-Applying...")
@@ -1488,6 +1896,8 @@ def run_linkedin_bot(max_applications=20, headless=False, log_fn=print, stop_eve
                         else:
                             log_fn("  [FAIL] Apply failed (requires manual completion)")
                             log_application(company, title, "LinkedIn", url, "Manual Needed", score, matched, skip_reason="Form stalled", posted_date=posted_date)
+                            if job_id:
+                                save_skipped_job(job_id)
     except KeyboardInterrupt:
         log_fn("\n[STOP] LinkedIn Bot stopped by user.")
     finally:

@@ -112,12 +112,17 @@ def _start_scheduler():
             except Exception as ex:
                 bot_log(f"[WARN] Scheduled reload failed: {ex}")
 
-            from linkedin_bot import run_linkedin_bot
-            from naukri_bot import run_naukri_bot
-            STOP_EVENT.clear()
-            run_linkedin_bot(max_applications=15, headless=True, log_fn=bot_log, stop_event=STOP_EVENT)
-            if not STOP_EVENT.is_set():
-                run_naukri_bot(max_applications=15, headless=True, log_fn=bot_log, stop_event=STOP_EVENT)
+            from core.notifier import enable_buffering, send_session_report
+            enable_buffering()
+            try:
+                from linkedin_bot import run_linkedin_bot
+                from naukri_bot import run_naukri_bot
+                STOP_EVENT.clear()
+                run_linkedin_bot(max_applications=15, headless=True, log_fn=bot_log, stop_event=STOP_EVENT)
+                if not STOP_EVENT.is_set():
+                    run_naukri_bot(max_applications=15, headless=True, log_fn=bot_log, stop_event=STOP_EVENT)
+            finally:
+                send_session_report()
 
         for run_time in SCHEDULED_RUNS:
             h, m = map(int, run_time.split(":"))

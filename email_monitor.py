@@ -3,6 +3,7 @@ email_monitor.py — IMAP email watcher that auto-advances the job application F
 
 Polls inbox every 5 minutes, matches email subjects/bodies against applied companies,
 and calls tracker.update_status() to advance FSM state automatically.
+Also reads company list from SQLite (via core/database.py) when available.
 
 Setup: add IMAP credentials to config/profile.py:
   IMAP_HOST     = "imap.gmail.com"
@@ -18,6 +19,12 @@ import threading
 import datetime
 import csv
 import os
+
+# ── SQLite dual-read (safe import) ───────────────────────────────────────
+try:
+    from core import database as _db
+except Exception:
+    _db = None
 
 _STOP = threading.Event()
 _monitor_thread = None
@@ -37,7 +44,22 @@ EMAIL_PATTERNS = [
 ]
 
 def _load_applied_companies() -> list:
-    """Return list of rows currently in 'Applied', 'Viewed', or 'Shortlisted' state."""
+    """
+    Return list of rows currently in 'Applied', 'Viewed', or 'Shortlisted' state.
+    Tries SQLite first (faster, lock-free), falls back to CSV read.
+    """
+    # ── Try SQLite first ───────────────────────────────────────────────
+    try:
+        if _db:
+            rows = _db.get_applied_companies()
+            if rows:
+                # Normalize keys to match CSV-style dict keys used downstream
+                return [{"Company": r["company"], "URL": r["url"],
+                         "Status": "Applied"} for r in rows]
+    except Exception:
+        pass
+
+    # ── Fallback: CSV read ───────────────────────────────────────────────
     tracker_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs", "job_applications.csv")
     if not os.path.exists(tracker_path):
         return []
