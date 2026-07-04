@@ -343,7 +343,7 @@
       );
     }
 
-    function JobPipelineTab({jobs}){
+    function JobPipelineTab({jobs, onPitchRecruiter}){
       const [search,setSearch]=useState("");
       const [statusFilter,setStatusFilter]=useState("all");
       const [portalFilter,setPortalFilter]=useState("all");
@@ -452,12 +452,25 @@
                           <div style={{color:T.textMuted,fontSize:"10px"}}>{r.role}</div>
                           <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4}}>
                             {r.email && (
-                              <button onClick={()=>{
-                                navigator.clipboard.writeText(r.email);
-                                toast("📋 Email copied!","success");
-                              }} style={{background:"none",border:"none",color:T.accent,cursor:"pointer",padding:0,fontSize:"10.5px",fontWeight:600}}>
-                                ✉️ Copy Email
-                              </button>
+                              <>
+                                <button onClick={()=>{
+                                  navigator.clipboard.writeText(r.email);
+                                  toast("📋 Email copied!","success");
+                                }} style={{background:"none",border:"none",color:T.accent,cursor:"pointer",padding:0,fontSize:"10.5px",fontWeight:600}}>
+                                  ✉️ Copy Email
+                                </button>
+                                <button onClick={()=>{
+                                  navigator.clipboard.writeText(r.email);
+                                  onPitchRecruiter && onPitchRecruiter({
+                                    email: r.email,
+                                    name: r.name,
+                                    role: selJob ? selJob.Role : "",
+                                    company: selJob ? selJob.Company : ""
+                                  });
+                                }} style={{background:"none",border:"none",color:T.purple,cursor:"pointer",padding:0,fontSize:"10.5px",fontWeight:600}}>
+                                  📢 Pitch
+                                </button>
+                              </>
                             )}
                             {r.linkedin && (
                               <a href={r.linkedin} target="_blank" rel="noopener" style={{color:T.blue,textDecoration:"none",fontSize:"10.5px"}}>
@@ -670,7 +683,7 @@
     // ═══════════════════════════════════════════════════════════════════
     // TAB: HR OUTREACH (BULK JD + AUTO-EXTRACT)
     // ═══════════════════════════════════════════════════════════════════
-    function OutreachTab(){
+    function OutreachTab({preFill,clearPreFill}){
       const [mode,setMode]=useState("single"); // single or bulk
       // Single mode
       const [jd,setJd]=useState("");
@@ -698,6 +711,20 @@
       const [extracted,setExtracted]=useState(null);
 
       useEffect(()=>{fetch("/api/outreach/history").then(r=>r.json()).then(d=>setHistory(d||[])).catch(()=>{});},[]);
+
+      useEffect(()=>{
+        if(preFill){
+          setMode("single");
+          setStep(2);
+          setCompany(preFill.company||"");
+          setRole(preFill.role||"");
+          setEmails(preFill.email||"");
+          setSubject(`Application for ${preFill.role} - Pratik Pawar`);
+          setBody(`Hi ${preFill.name || "Hiring Team"},\n\nI hope you are doing well.\n\nI recently came across the ${preFill.role} opening at ${preFill.company} and am very interested in the role. With my experience as a Data Engineer / Software Developer, I believe my skills in Python and database management align well with your team's requirements.\n\nI would love to connect and share more about how my background can help ${preFill.company}. Please find my resume attached to this email.\n\nThank you for your time and consideration.\n\nBest regards,\nPratik Pawar\n+91 9272469578`);
+          clearPreFill();
+          toast("📋 Outreach details pre-filled!","success");
+        }
+      },[preFill]);
 
       const handleCraft=()=>{
         if(!jd.trim()){toast("Paste a Job Description first","warn");return}
@@ -1683,6 +1710,7 @@
       const [config,setConfig]=useState({headless:true,dailyLimit:50,autoThreshold:75,reviewThreshold:55});
       const [todayStats,setTodayStats]=useState({});
       const [confirm,setConfirm]=useState(null);
+      const [outreachPreFill,setOutreachPreFill]=useState(null);
 
       const logsEndRef=useRef(null);
       const timerRef=useRef(null);
@@ -1787,12 +1815,12 @@
           // ── MAIN CONTENT ──
           React.createElement("div",{className:"scrollable",style:{flex:1,padding:20,background:T.bg,minHeight:0}},
             tab==="command"&&React.createElement(CommandCenterTab,{running,jobs,logs,logsEndRef,uptime,config,onStart:startBot,onStop:stopBot,fmtUptime,todayStats}),
-            tab==="jobs"&&React.createElement(JobPipelineTab,{jobs}),
+            tab==="jobs"&&React.createElement(JobPipelineTab,{jobs,onPitchRecruiter:(info)=>{setOutreachPreFill(info);setTab("outreach");}}),
             tab==="search"&&React.createElement(TargetedSearchTab,{running}),
             tab==="profiles"&&React.createElement(ProfilesTab,{setConfirm}),
             tab==="analytics"&&React.createElement(AnalyticsTab,{jobs}),
             tab==="qa"&&React.createElement(QATab,null),
-            tab==="outreach"&&React.createElement(OutreachTab,null),
+            tab==="outreach"&&React.createElement(OutreachTab,{preFill:outreachPreFill,clearPreFill:()=>setOutreachPreFill(null)}),
             tab==="settings"&&React.createElement(SettingsTab,{config,setConfig})
           )
         )
